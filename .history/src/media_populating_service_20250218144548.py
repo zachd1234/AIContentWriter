@@ -6,7 +6,6 @@ import json
 import requests
 from serper_api import fetch_videos
 from wordpress_media_handler import WordPressMediaHandler
-import re
 
 class GetImgAIClient:
     def __init__(self):
@@ -48,6 +47,7 @@ class GetImgAIClient:
                     try:
                         wp_handler = WordPressMediaHandler(
                             base_url="https://ruckquest.com",
+                            openai_api_key="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"
                         )
                         
                         # Upload and get media ID
@@ -71,43 +71,62 @@ class GetImgAIClient:
             return f"Error generating image: {str(e)}"
 
 class PostWriterV2:
+    _instance = None
+    
+    def __new__(cls):
+        if cls._instance is None:
+            print("Initializing new PostWriter instance...")
+            cls._instance = super(PostWriterV2, cls).__new__(cls)
+            cls._instance.initialized = False
+        return cls._instance
+    
     def __init__(self):
-        # Initialize the LLM with Gemini configuration
-        self.llm = ChatGoogleGenerativeAI(
-            model="gemini-pro",
-            temperature=0.7,
-            max_output_tokens=2048,
-            google_api_key="AIzaSyAgBew-UTCDpKGAb1qidbs0CrfC9nKU9ME"  # Replace with your Gemini API key
-        )
-        
-        self.img_client = GetImgAIClient()
-        
-        # Define the image generation tool
-        generate_image_tool = Tool(
-            name="GenerateImage",
-            func=self.img_client.generate_image,
-            description="Generates an AI image based on the provided prompt. Returns the URL of the generated image."
-        )
-        
-        fetch_videos_tool = Tool(
-            name="FetchVideos",
-            func=fetch_videos,
-            description="Searches for relevant videos based on a query. Returns a list of video information including titles and URLs."
-        )
-        
-        # Initialize the agent with both tools
-        self.agent = initialize_agent(
-            tools=[generate_image_tool, fetch_videos_tool],
-            llm=self.llm,
-            agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
-            verbose=True,
-            handle_parsing_errors=True,
-            max_iterations=3,  # Added to limit iterations
-            early_stopping_method="generate"  # Better handling of stopping conditions
-        )
-        
-        # Set up the system message
-        self.system_message = """You are a professional blog post editor. Your task is to enhance blog posts with relevant images and videos.
+        # Only initialize once
+        if not hasattr(self, 'initialized') or not self.initialized:
+            print("Setting up AI model and tools...")
+            
+            # Initialize the LLM with Gemini configuration
+            self.llm = ChatGoogleGenerativeAI(
+                model="gemini-pro",
+                temperature=0.7,
+                max_output_tokens=2048,
+                google_api_key="AIzaSyAgBew-UTCDpKGAb1qidbs0CrfC9nKU9ME"
+            )
+            
+            print("AI model initialized, setting up tools...")
+            
+            self.img_client = GetImgAIClient()
+            
+            # Define the tools
+            generate_image_tool = Tool(
+                name="GenerateImage",
+                func=self.img_client.generate_image,
+                description="Generates an AI image based on the provided prompt. Returns the URL of the generated image."
+            )
+            
+            fetch_videos_tool = Tool(
+                name="FetchVideos",
+                func=fetch_videos,
+                description="Searches for relevant videos based on a query. Returns a list of video information including titles and URLs."
+            )
+            
+            print("Tools created, initializing agent...")
+            
+            # Initialize the agent with both tools
+            self.agent = initialize_agent(
+                tools=[generate_image_tool, fetch_videos_tool],
+                llm=self.llm,
+                agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
+                verbose=True,
+                handle_parsing_errors=True,
+                max_iterations=3,
+                early_stopping_method="generate"
+            )
+            
+            print("Agent initialized, ready to process content.")
+            
+            # Set up the system message
+            self.system_message = """You are a professional blog post editor. Your task is to enhance blog posts with relevant images and videos.
 When you receive a blog post:
 1. Identify 3-4 key points where media would enhance the narrative
 2. For each identified point:
@@ -127,7 +146,9 @@ IMPORTANT:
 - Choose video for dynamic content like demonstrations, tutorials, or news coverage
 - Choose images for concept illustrations, static information, or visual appeal
 - Limit to 1-2 videos maximum to avoid overwhelming the reader"""
-
+            
+            self.initialized = True
+        
     def enhance_post(self, blog_post: str) -> str:
         """Enhances the blog post with AI-generated images"""
         try:
@@ -144,32 +165,29 @@ IMPORTANT:
             # Run the agent
             response = self.agent.invoke({"input": prompt})
             
-            # Extract JSON from the agent's response
-            if not response:
-                print("No response from agent")
-                return "[]"
-            
-            # The response contains a 'Final Answer' that includes the JSON
-            output_text = response.get("output", "")
-            
-            # Find all JSON arrays in the text (between [ and ])
-            json_matches = re.findall(r'\[[\s\S]*?\]', output_text)
-            
-            if not json_matches:
-                print("No JSON array found in response")
+            # Add better error handling and JSON parsing
+            if not response or "output" not in response:
+                print("No valid response from agent")
                 return "[]"
                 
-            # Use the first valid JSON array found
-            for json_str in json_matches:
-                try:
-                    # Validate JSON format
-                    json.loads(json_str)
-                    return json_str
-                except json.JSONDecodeError:
-                    continue
-            
-            print("No valid JSON found in response")
-            return "[]"
+            try:
+                output_text = response["output"]
+                start = output_text.find('[')
+                end = output_text.rfind(']') + 1
+                
+                if start == -1 or end == 0:
+                    print("No JSON array found in response")
+                    return "[]"
+                    
+                json_str = output_text[start:end]
+                # Validate JSON format
+                json.loads(json_str)  # This will raise an error if invalid JSON
+                return json_str
+                
+            except json.JSONDecodeError as e:
+                print(f"Error parsing JSON response: {str(e)}")
+                print(f"Raw response: {output_text}")
+                return "[]"
 
         except Exception as e:
             print(f"Error enhancing post: {str(e)}")

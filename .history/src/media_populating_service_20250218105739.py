@@ -1,4 +1,4 @@
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 from langchain.tools import Tool
 from langchain.agents import initialize_agent, AgentType
 from typing import Dict
@@ -6,13 +6,12 @@ import json
 import requests
 from serper_api import fetch_videos
 from wordpress_media_handler import WordPressMediaHandler
-import re
 
 class GetImgAIClient:
     def __init__(self):
         self.API_KEY = "key-wHtXSzGfHsJsoJCCS8b1nu5FznStdiRjIq21CtzILjUr6nUl3a6Eryqxq8Q8Dgy12CQB8P8SC6m151riDyPePT8DyiFD1k5"
         self.API_URL = "https://api.getimg.ai/v1/flux-schnell/text-to-image"
-        self.GOOGLE_API_KEY = "AIzaSyAgBew-UTCDpKGAb1qidbs0CrfC9nKU9ME"  # Replace with your Gemini API key
+        self.OPENAI_API_KEY = "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"
 
     def generate_image(self, prompt: str, width=1024, height=1024, steps=4) -> str:
         """Generates an AI image and uploads it to WordPress."""
@@ -48,6 +47,7 @@ class GetImgAIClient:
                     try:
                         wp_handler = WordPressMediaHandler(
                             base_url="https://ruckquest.com",
+                            openai_api_key="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"
                         )
                         
                         # Upload and get media ID
@@ -55,7 +55,7 @@ class GetImgAIClient:
                         print(f"✅ Image uploaded to WordPress. Media ID: {media_id}")
                         
                         # Get the WordPress URL from the response
-                        return f"{media_id}"
+                        return f"https://ruckquest.com/wp-content/uploads/{media_id}"
                         
                     except Exception as wp_error:
                         print(f"❌ WordPress upload failed: {str(wp_error)}")
@@ -72,12 +72,11 @@ class GetImgAIClient:
 
 class PostWriterV2:
     def __init__(self):
-        # Initialize the LLM with Gemini configuration
-        self.llm = ChatGoogleGenerativeAI(
-            model="gemini-pro",
+        # Initialize the LLM
+        self.llm = ChatOpenAI(
+            model="gpt-4",
             temperature=0.7,
-            max_output_tokens=2048,
-            google_api_key="AIzaSyAgBew-UTCDpKGAb1qidbs0CrfC9nKU9ME"  # Replace with your Gemini API key
+            api_key="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"
         )
         
         self.img_client = GetImgAIClient()
@@ -101,9 +100,7 @@ class PostWriterV2:
             llm=self.llm,
             agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
             verbose=True,
-            handle_parsing_errors=True,
-            max_iterations=3,  # Added to limit iterations
-            early_stopping_method="generate"  # Better handling of stopping conditions
+            handle_parsing_errors=True
         )
         
         # Set up the system message
@@ -143,37 +140,11 @@ IMPORTANT:
             
             # Run the agent
             response = self.agent.invoke({"input": prompt})
-            
-            # Extract JSON from the agent's response
-            if not response:
-                print("No response from agent")
-                return "[]"
-            
-            # The response contains a 'Final Answer' that includes the JSON
-            output_text = response.get("output", "")
-            
-            # Find all JSON arrays in the text (between [ and ])
-            json_matches = re.findall(r'\[[\s\S]*?\]', output_text)
-            
-            if not json_matches:
-                print("No JSON array found in response")
-                return "[]"
-                
-            # Use the first valid JSON array found
-            for json_str in json_matches:
-                try:
-                    # Validate JSON format
-                    json.loads(json_str)
-                    return json_str
-                except json.JSONDecodeError:
-                    continue
-            
-            print("No valid JSON found in response")
-            return "[]"
+            return response["output"]
 
         except Exception as e:
             print(f"Error enhancing post: {str(e)}")
-            return "[]"
+            return f"Error enhancing post: {str(e)}"
 
     def populate_media_in_html(self, html_content: str) -> str:
         """
@@ -188,16 +159,16 @@ IMPORTANT:
             for placement in media_placements:
                 insert_before = placement['insertBefore']
                 media_type = placement['mediaType']
+                media_url = placement['mediaUrl']
                 
                 if media_type == 'image':
-                    # The media_url returned from WordPress is already the full URL
-                    wordpress_url = placement['mediaUrl']  # Renamed from media_url for clarity
-                    media_html = f'<p><img src="{wordpress_url}" alt="{placement.get("description", "")}" /></p>'
+                    # Format image with proper HTML structure
+                    media_html = f'<p><img src="{media_url}" alt="{placement.get("description", "")}"></p>'
                 else:  # video
                     # Extract video ID from YouTube URL
-                    video_id = placement['mediaUrl'].split('watch?v=')[-1]
+                    video_id = media_url.split('watch?v=')[-1]
                     # Format video with proper iframe structure
-                    media_html = f'<p><iframe style="aspect-ratio: 16 / 9; width: 100%" src="https://www.youtube.com/embed/{video_id}" title="{placement.get("description", "")}" frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen></iframe></p>'
+                    media_html = f'<iframe style="aspect-ratio: 16 / 9; width: 100%" src="https://www.youtube.com/embed/{video_id}" title="{video_id}" frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen></iframe>'
                 
                 # Insert the media HTML before the specified text
                 html_content = html_content.replace(

@@ -6,7 +6,6 @@ import json
 import requests
 from serper_api import fetch_videos
 from wordpress_media_handler import WordPressMediaHandler
-import re
 
 class GetImgAIClient:
     def __init__(self):
@@ -48,6 +47,7 @@ class GetImgAIClient:
                     try:
                         wp_handler = WordPressMediaHandler(
                             base_url="https://ruckquest.com",
+                            openai_api_key="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"
                         )
                         
                         # Upload and get media ID
@@ -144,32 +144,29 @@ IMPORTANT:
             # Run the agent
             response = self.agent.invoke({"input": prompt})
             
-            # Extract JSON from the agent's response
-            if not response:
-                print("No response from agent")
-                return "[]"
-            
-            # The response contains a 'Final Answer' that includes the JSON
-            output_text = response.get("output", "")
-            
-            # Find all JSON arrays in the text (between [ and ])
-            json_matches = re.findall(r'\[[\s\S]*?\]', output_text)
-            
-            if not json_matches:
-                print("No JSON array found in response")
+            # Add better error handling and JSON parsing
+            if not response or "output" not in response:
+                print("No valid response from agent")
                 return "[]"
                 
-            # Use the first valid JSON array found
-            for json_str in json_matches:
-                try:
-                    # Validate JSON format
-                    json.loads(json_str)
-                    return json_str
-                except json.JSONDecodeError:
-                    continue
-            
-            print("No valid JSON found in response")
-            return "[]"
+            try:
+                output_text = response["output"]
+                start = output_text.find('[')
+                end = output_text.rfind(']') + 1
+                
+                if start == -1 or end == 0:
+                    print("No JSON array found in response")
+                    return "[]"
+                    
+                json_str = output_text[start:end]
+                # Validate JSON format
+                json.loads(json_str)  # This will raise an error if invalid JSON
+                return json_str
+                
+            except json.JSONDecodeError as e:
+                print(f"Error parsing JSON response: {str(e)}")
+                print(f"Raw response: {output_text}")
+                return "[]"
 
         except Exception as e:
             print(f"Error enhancing post: {str(e)}")

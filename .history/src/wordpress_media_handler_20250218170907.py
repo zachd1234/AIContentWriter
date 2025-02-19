@@ -5,19 +5,17 @@ from requests_toolbelt.multipart.encoder import MultipartEncoder
 import json
 import re
 import google.generativeai as genai
-import PIL.Image
-import io
 
 class WordPressMediaHandler:
-    VISION_MODEL = "gemini-2.0-flash"  # Updated to the new model name
+    VISION_MODEL = "gemini-pro-vision"  # Changed to Gemini model
 
-    def __init__(self, base_url: str):
+    def __init__(self, base_url: str, google_api_key: str):
         print(f"Initializing WordPressMediaHandler with base_url: {base_url}")
         self.base_url = base_url.rstrip('/') + '/wp-json/wp/v2/'
-        # Constants
         self.username = "zach"
         self.password = "anI6 BOd7 RDLL z4ET 7z0U fTrt"
-        self.google_api_key = "AIzaSyAgBew-UTCDpKGAb1qidbs0CrfC9nKU9ME"        
+        self.google_api_key = "AIzaSyAgBew-UTCDpKGAb1qidbs0CrfC9nKU9ME"
+        
         # Configure Gemini
         genai.configure(api_key=self.google_api_key)
         self.model = genai.GenerativeModel(self.VISION_MODEL)
@@ -34,41 +32,23 @@ class WordPressMediaHandler:
 
     def call_vision_model(self, image_url: str, prompt: str) -> str:
         try:
-            print(f"Downloading image from: {image_url}")
             # Download the image
             response = requests.get(image_url)
             response.raise_for_status()
-            print(f"Image downloaded successfully, size: {len(response.content)} bytes")
             
-            try:
-                # Convert image bytes to PIL Image
-                image = PIL.Image.open(io.BytesIO(response.content))
+            # Generate content using Gemini
+            response = self.model.generate_content([
+                prompt,
+                response.content  # Pass image bytes directly
+            ])
+            
+            
+            if not response:
+                raise Exception("No response from Gemini Vision API")
                 
-                # Generate content using Gemini
-                print("Calling Gemini Vision API...")
-                response = self.model.generate_content([
-                    prompt,
-                    image  # Pass PIL Image object
-                ])
-                
-                print(f"Raw Gemini Response: {response}")
-                
-                if not response:
-                    raise Exception("Empty response from Gemini Vision API")
-                
-                return response.text
+            return response.text
 
-            except Exception as gemini_error:
-                print(f"Gemini API Error: {str(gemini_error)}")
-                print(f"Error type: {type(gemini_error)}")
-                raise
-
-        except requests.exceptions.RequestException as download_error:
-            print(f"Image download error: {str(download_error)}")
-            raise Exception("Failed to download image") from download_error
         except Exception as e:
-            print(f"Unexpected error in vision analysis: {str(e)}")
-            print(f"Error type: {type(e)}")
             raise Exception("Failed to process vision request") from e
 
     def generate_image_metadata(self, image_url: str) -> dict:
@@ -163,7 +143,8 @@ class WordPressMediaHandler:
 def main():
     # Simplified test
     wp_handler = WordPressMediaHandler(
-        base_url="https://ruckquest.com"
+        base_url="https://ruckquest.com",
+        google_api_key="AIzaSyAgBew-UTCDpKGAb1qidbs0CrfC9nKU9ME"  # Replace with your Gemini API key
     )
     test_image_url = "https://koala.sh/api/image/v2-q0wvi-xbs3j.jpg?width=1216&#x26;height=832&#x26;dream"
     

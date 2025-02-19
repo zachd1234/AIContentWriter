@@ -11,10 +11,9 @@ import io
 class WordPressMediaHandler:
     VISION_MODEL = "gemini-2.0-flash"  # Updated to the new model name
 
-    def __init__(self, base_url: str):
+    def __init__(self, base_url: str, google_api_key: str):
         print(f"Initializing WordPressMediaHandler with base_url: {base_url}")
         self.base_url = base_url.rstrip('/') + '/wp-json/wp/v2/'
-        # Constants
         self.username = "zach"
         self.password = "anI6 BOd7 RDLL z4ET 7z0U fTrt"
         self.google_api_key = "AIzaSyAgBew-UTCDpKGAb1qidbs0CrfC9nKU9ME"        
@@ -163,7 +162,8 @@ class WordPressMediaHandler:
 def main():
     # Simplified test
     wp_handler = WordPressMediaHandler(
-        base_url="https://ruckquest.com"
+        base_url="https://ruckquest.com",
+        google_api_key="AIzaSyAgBew-UTCDpKGAb1qidbs0CrfC9nKU9ME"  # Replace with your Gemini API key
     )
     test_image_url = "https://koala.sh/api/image/v2-q0wvi-xbs3j.jpg?width=1216&#x26;height=832&#x26;dream"
     

@@ -7,7 +7,7 @@ class ContentAPIHandler:
     def __init__(self):
         self.blog_generator = blog_generator.BlogGenerator()
         self.media_handler = media_populating_service.PostWriterV2()
-        self.internal_linker = linking_service.LinkingAgent(base_url="https://ruckquest.com")
+        self.internal_linker = linking_service.LinkingAgent()
 
     async def generate_complete_post(self, keyword: str) -> dict:
         """
@@ -39,15 +39,9 @@ class ContentAPIHandler:
             )
             print("✓ Media populated")
             
-            # Add internal links (handle both async and sync cases)
+            # Add internal links (already async)
             print("Starting internal linking...")
-            if asyncio.iscoroutinefunction(self.internal_linker.process_content_with_links):
-                final_post = await self.internal_linker.process_content_with_links(post_with_media)
-            else:
-                final_post = await asyncio.to_thread(
-                    self.internal_linker.process_content_with_links,
-                    post_with_media
-                )
+            final_post = await self.internal_linker.process_content_with_links(post_with_media)
             print("✓ Internal links added")
             
             return {
@@ -82,7 +76,7 @@ async def main():
     api = ContentAPIHandler()
     
     # Test keyword
-    test_keyword = "How Much Weight Should I Ruck With?"
+    test_keyword = "What is a Phase I Environmental Site Assessment?"
     
     print(f"\nGenerating complete post for keyword: {test_keyword}")
     print("-" * 50)

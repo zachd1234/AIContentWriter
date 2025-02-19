@@ -82,7 +82,7 @@ async def main():
     api = ContentAPIHandler()
     
     # Test keyword
-    test_keyword = "How Much Weight Should I Ruck With?"
+    test_keyword = "What is a Phase I Environmental Site Assessment?"
     
     print(f"\nGenerating complete post for keyword: {test_keyword}")
     print("-" * 50)
