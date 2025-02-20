@@ -1,9 +1,16 @@
+import os
+from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
-from siteMapFetch import fetch_posts_from_sitemap
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from api.sitemap_api import fetch_posts_from_sitemap
 import json
 
 class LinkingAgent:
     def __init__(self, base_url: str):
+        # Load environment variables
+        load_dotenv()
+        
         self.base_url = base_url
         
         # Initialize the LLM with Gemini configuration
@@ -11,7 +18,7 @@ class LinkingAgent:
             model="gemini-pro",
             temperature=0.7,
             max_output_tokens=2048,
-            google_api_key="AIzaSyAgBew-UTCDpKGAb1qidbs0CrfC9nKU9ME"      
+            google_api_key=os.getenv('GOOGLE_API_KEY')     
         )
         
         # Get available posts once during initialization

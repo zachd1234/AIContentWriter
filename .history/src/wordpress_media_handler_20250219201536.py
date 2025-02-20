@@ -7,17 +7,24 @@ import re
 import google.generativeai as genai
 import PIL.Image
 import io
+import os
+from dotenv import load_dotenv
 
 class WordPressMediaHandler:
     VISION_MODEL = "gemini-2.0-flash"  # Updated to the new model name
 
     def __init__(self, base_url: str):
+        # Load environment variables
+        load_dotenv()
+        
         print(f"Initializing WordPressMediaHandler with base_url: {base_url}")
         self.base_url = base_url.rstrip('/') + '/wp-json/wp/v2/'
-        # Constants
-        self.username = "zach"
-        self.password = "anI6 BOd7 RDLL z4ET 7z0U fTrt"
-        self.google_api_key = "AIzaSyAgBew-UTCDpKGAb1qidbs0CrfC9nKU9ME"        
+        
+        # Get credentials from environment variables
+        self.username = os.getenv('WP_USERNAME')
+        self.password = os.getenv('WP_PASSWORD')
+        self.google_api_key = os.getenv('GOOGLE_API_KEY')
+        
         # Configure Gemini
         genai.configure(api_key=self.google_api_key)
         self.model = genai.GenerativeModel(self.VISION_MODEL)
