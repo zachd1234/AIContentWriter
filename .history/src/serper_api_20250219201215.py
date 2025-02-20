@@ -1,15 +1,18 @@
 import http.client
 import json
+import os
+from dotenv import load_dotenv
 
 def fetch_videos(query):
     """
     Fetch videos related to a query using Serper API
     Returns a list of video results with titles and URLs
     """
+    load_dotenv()
     conn = http.client.HTTPSConnection("google.serper.dev")
     payload = json.dumps({"q": query})
     headers = {
-        'X-API-KEY': 'd5dce9e923a550cedc12015627d4d0982801c08b',
+        'X-API-KEY': os.getenv('SERPER_API_KEY'),
         'Content-Type': 'application/json'
     }
     

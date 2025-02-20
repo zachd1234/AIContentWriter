@@ -1,18 +1,23 @@
+import os
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.tools import Tool
 from langchain.agents import initialize_agent, AgentType
 from typing import Dict
 import json
 import requests
-from serper_api import fetch_videos
-from wordpress_media_handler import WordPressMediaHandler
+from api.serper_api import fetch_videos
+from api.wordpress_media_api import WordPressMediaHandler
 import re
 
 class GetImgAIClient:
     def __init__(self):
-        self.API_KEY = "key-wHtXSzGfHsJsoJCCS8b1nu5FznStdiRjIq21CtzILjUr6nUl3a6Eryqxq8Q8Dgy12CQB8P8SC6m151riDyPePT8DyiFD1k5"
-        self.API_URL = "https://api.getimg.ai/v1/flux-schnell/text-to-image"
-        self.GOOGLE_API_KEY = "AIzaSyAgBew-UTCDpKGAb1qidbs0CrfC9nKU9ME"  # Replace with your Gemini API key
+        load_dotenv()
+        self.API_KEY = os.getenv('GETIMG_API_KEY')
+        self.API_URL = os.getenv('GETIMG_API_URL')
+        self.GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
 
     def generate_image(self, prompt: str, width=1024, height=1024, steps=4) -> str:
         """Generates an AI image and uploads it to WordPress."""
@@ -72,12 +77,17 @@ class GetImgAIClient:
 
 class PostWriterV2:
     def __init__(self):
+        load_dotenv()
+        
+        # Set Google Application Credentials
+        os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+        
         # Initialize the LLM with Gemini configuration
         self.llm = ChatGoogleGenerativeAI(
             model="gemini-pro",
             temperature=0.7,
             max_output_tokens=2048,
-            google_api_key="AIzaSyAgBew-UTCDpKGAb1qidbs0CrfC9nKU9ME"  # Replace with your Gemini API key
+            google_api_key=os.getenv('GOOGLE_API_KEY')
         )
         
         self.img_client = GetImgAIClient()

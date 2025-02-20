@@ -1,12 +1,13 @@
 import google.generativeai as genai
+from google.generativeai import types  # Add this import
 import os
 from typing import Dict
 
 class BlogGenerator:
     def __init__(self):
-        # Initialize Gemini
+        # Initialize Gemini with your API key
         genai.configure(api_key="AIzaSyAgBew-UTCDpKGAb1qidbs0CrfC9nKU9ME")
-        self.model = genai.GenerativeModel('gemini-2.0-pro-exp-02-05')
+        self.model = genai.GenerativeModel('gemini-2.0-pro-exp-02-05')  # Using newer model
 
     def generate_blog_post(self, keyword: str) -> dict:
         """
@@ -30,7 +31,21 @@ class BlogGenerator:
         """
         
         try:
-            response = self.model.generate_content(contents=prompt)
+            response = self.model.generate_content(
+                contents=prompt,
+                safety_settings={
+                    "HARASSMENT": "block_none",
+                    "HATE_SPEECH": "block_none",
+                    "SEXUALLY_EXPLICIT": "block_none",
+                    "DANGEROUS_CONTENT": "block_none"
+                },
+                generation_config={
+                    "temperature": 0.7,
+                    "top_p": 1,
+                    "tools": ["google-search"]  # Note the hyphen instead of underscore
+                }
+            )
+            
             return {
                 "content": response.text
             }
@@ -52,9 +67,6 @@ class BlogGenerator:
         # Step 1: Generate raw content
         raw_post = self.generate_blog_post(keyword)
         
-        # Step 2: Convert to HTML
-        #if raw_post:
-            #html_content = await self.convert_to_html(raw_post["content"])
         return raw_post
         
         return None
@@ -71,4 +83,5 @@ def main():
         print("Failed to generate blog post")
 
 if __name__ == "__main__":
-    main() 
+    main()
+
