@@ -1,0 +1,15 @@
+# Use Python slim image to keep size down
+FROM python:3.9-slim
+
+# Set working directory
+WORKDIR /app
+
+# Copy only necessary files
+COPY requirements.txt .
+COPY src/ ./src/
+
+# Install dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Command to run the application
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "3000"] 

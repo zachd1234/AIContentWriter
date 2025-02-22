@@ -1,4 +1,4 @@
-#!/Users/zachderhake/AIBlogWriter/.venv/bin/python
+#!/Users/zachderhake/AIBlogWriter/.venv/bin/python3.13
 # -*- coding: utf-8 -*-
 import re
 import sys

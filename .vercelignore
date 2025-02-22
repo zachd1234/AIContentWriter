@@ -1,0 +1,23 @@
+# Core ignores - keep these at the top
+.venv
+.venv/**
+node_modules
+.git
+__pycache__
+*.pyc
+
+# Development
+.history
+.vercel
+.env
+.env.*
+.gitignore
+.DS_Store
+
+# Everything else can be simpler
+tests/
+docs/
+*.md
+*.log
+dist/
+build/
