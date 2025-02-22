@@ -12,14 +12,14 @@ app = FastAPI(
 class KeywordRequest(BaseModel):
     keyword: str
 
-@app.post("/generate")
-async def generate_post(keyword: str):
+@app.post("/generate-post")
+async def generate_post(request: KeywordRequest):
     """
     Generate a complete blog post with media and internal links
     """
     try:
         handler = ContentAPIHandler()
-        result = await handler.generate_complete_post(keyword)
+        result = await handler.generate_complete_post(request.keyword)
         
         if not result:
             raise HTTPException(status_code=500, detail="Failed to generate content")
