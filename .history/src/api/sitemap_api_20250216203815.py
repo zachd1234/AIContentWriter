@@ -3,20 +3,12 @@ from xml.etree import ElementTree as ET
 from urllib.parse import urlparse, urljoin
 import json
 
-def fetch_posts_from_sitemap(base_url: str) -> list:
+def fetch_posts_from_sitemap(base_url="https://ruckquest.com"):
     """
     Fetches all posts from the post sitemap of a WordPress site
-    
-    Args:
-        base_url (str): The base URL of the website (e.g., 'https://example.com')
-        
-    Returns:
-        list: A list of post URLs and their metadata
+    Returns a list of post URLs and their metadata
     """
     try:
-        # Ensure base_url is properly formatted
-        base_url = base_url.rstrip('/')
-        
         # First fetch the main sitemap with headers
         headers = {
             'User-Agent': 'Mozilla/5.0 (compatible; SitemapFetcher/1.0)',
@@ -24,7 +16,6 @@ def fetch_posts_from_sitemap(base_url: str) -> list:
         }
         
         sitemap_url = f"{base_url}/sitemap.xml"
-        print(f"Fetching sitemap from: {sitemap_url}")
         response = requests.get(sitemap_url, headers=headers)
         
         # Clean the response content
@@ -46,10 +37,9 @@ def fetch_posts_from_sitemap(base_url: str) -> list:
                 break
         
         if not post_sitemap_url:
-            raise Exception(f"Post sitemap not found for {base_url}")
+            raise Exception("Post sitemap not found")
             
         # Fetch the post sitemap
-        print(f"Fetching post sitemap from: {post_sitemap_url}")
         response = requests.get(post_sitemap_url, headers=headers)
         content = response.text.strip()
         
@@ -74,7 +64,7 @@ def fetch_posts_from_sitemap(base_url: str) -> list:
         return posts
         
     except Exception as e:
-        print(f"Error fetching posts from {base_url}: {str(e)}")
+        print(f"Error fetching posts: {str(e)}")
         return []
 
 def save_posts_to_file(posts, filename="posts.json"):
@@ -142,13 +132,11 @@ def fetch_sitemap(base_url):
 
 def main():
     try:
-        # Test with a configurable base URL
-        base_url = "https://example.com"  # Replace with your test domain
-        posts = fetch_posts_from_sitemap(base_url)
+        posts = fetch_posts_from_sitemap('https://ruckquest.com')
         if posts:
             save_posts_to_file(posts)
             print("\nAll posts found:")
-            for post in posts:
+            for post in posts:  # Removed the [:5] slice to show all posts
                 print(f"- {post['loc']} (Last modified: {post['lastmod']})")
             print(f"\nTotal posts found: {len(posts)}")
     except Exception as e:

@@ -16,7 +16,7 @@ class KeywordRequest(BaseModel):
     keyword: str
 
 @app.post("/generate")
-async def generate_post(keyword: str, base_url: str, x_api_key: str = Header(...)):
+async def generate_post(keyword: str, x_api_key: str = Header(...)):
     if x_api_key != API_KEY:
         raise HTTPException(status_code=403, detail="Invalid API Key")
     
@@ -25,7 +25,7 @@ async def generate_post(keyword: str, base_url: str, x_api_key: str = Header(...
     """
     try:
         handler = ContentAPIHandler()
-        result = await handler.generate_complete_post(keyword, base_url)
+        result = await handler.generate_complete_post(keyword)
         
         if not result:
             raise HTTPException(status_code=500, detail="Failed to generate content")

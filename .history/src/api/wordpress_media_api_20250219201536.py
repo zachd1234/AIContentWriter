@@ -18,16 +18,12 @@ class WordPressMediaHandler:
         load_dotenv()
         
         print(f"Initializing WordPressMediaHandler with base_url: {base_url}")
-        # Ensure base_url is properly formatted and includes wp-json endpoint
         self.base_url = base_url.rstrip('/') + '/wp-json/wp/v2/'
         
         # Get credentials from environment variables
         self.username = os.getenv('WP_USERNAME')
         self.password = os.getenv('WP_PASSWORD')
         self.google_api_key = os.getenv('GOOGLE_API_KEY')
-        
-        if not all([self.username, self.password, self.google_api_key]):
-            raise ValueError("Missing required environment variables")
         
         # Configure Gemini
         genai.configure(api_key=self.google_api_key)
@@ -161,6 +157,7 @@ class WordPressMediaHandler:
                 response.raise_for_status()
             
             media_response = response.json()
+            # Only change: use guid.rendered instead of source_url
             wp_url = media_response['guid']['rendered']
             print(f"Upload successful. URL: {wp_url}")
             
@@ -171,15 +168,17 @@ class WordPressMediaHandler:
             raise
 
 def main():
-    # Updated test function with dynamic base URL
-    base_url = "https://example.com"  # Replace with your test domain
-    wp_handler = WordPressMediaHandler(base_url=base_url)
-    
-    test_image_url = "https://example.com/test-image.jpg"  # Replace with a real test image
+    # Simplified test
+    wp_handler = WordPressMediaHandler(
+        base_url="https://ruckquest.com"
+    )
+    test_image_url = "https://koala.sh/api/image/v2-q0wvi-xbs3j.jpg?width=1216&#x26;height=832&#x26;dream"
     
     try:
-        media_url = wp_handler.upload_image_from_url(image_url=test_image_url)
-        print(f"Successfully uploaded image. WordPress URL: {media_url}")
+        media_id = wp_handler.upload_image_from_url(
+            image_url=test_image_url
+        )
+        print(f"Successfully uploaded image. WordPress URL: {media_id}")
     except Exception as e:
         print(f"Upload failed: {str(e)}")
 
