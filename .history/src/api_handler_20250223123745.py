@@ -6,6 +6,7 @@ import asyncio
 class ContentAPIHandler:
     def __init__(self):
         self.blog_generator = ContentGenerator()
+        self.media_handler = PostWriterV2()
         self.internal_linker = LinkingAgent()
 
     async def generate_complete_post(self, keyword: str, base_url: str) -> dict:
@@ -23,9 +24,6 @@ class ContentAPIHandler:
             dict: Complete post with all components
         """
         try:
-            # Initialize media handler with the base_url from the request
-            self.media_handler = PostWriterV2(base_url=base_url)
-            
             # Generate initial blog post (wrap in asyncio.to_thread if CPU intensive)
             print("Starting blog post generation...")
             blog_post = await asyncio.to_thread(self.blog_generator.generate_blog_post, keyword)

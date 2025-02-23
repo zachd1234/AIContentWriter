@@ -3,6 +3,7 @@ import json
 import os
 from dotenv import load_dotenv
 import datetime
+from langchain.schema import GenerationConfig
 
 def fetch_videos(query):
     """
