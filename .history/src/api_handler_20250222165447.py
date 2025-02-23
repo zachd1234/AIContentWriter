@@ -1,6 +1,6 @@
-from services.content_generator import ContentGenerator
-from services.media_service import PostWriterV2
-from services.linking_service import LinkingAgent
+from src.services.content_generator import ContentGenerator
+from src.services.media_service import PostWriterV2
+from src.services.linking_service import LinkingAgent
 import asyncio
 
 class ContentAPIHandler:
@@ -91,7 +91,7 @@ async def main():
     print("-" * 50)
     
     # Generate the post
-    result = await api.generate_complete_post(test_keyword, "https://mbt.dsc.mybluehost.me")
+    result = await api.generate_complete_post(test_keyword, "https://ruckquest.com")
     
     # Print the result
     if result["status"] == "success":
