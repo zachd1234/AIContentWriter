@@ -206,7 +206,9 @@ class PostWriterV2:
         - Return ONLY the JSON object, nothing else
         - The insertBefore value must be an exact copy of text from the blog post
         - Space out the media placements so that they are not all bunched up together
-        - Limit media to 3 placements maximum"""
+        - Limit media to 3 placements maximum
+        - Do Not add media to the beginning of the post"""
+
 
     def format_json_response(self, agent_output: str) -> str:
         """Uses LLM to standardize the JSON format"""
@@ -226,13 +228,9 @@ class PostWriterV2:
                - description
             3. Return ONLY the JSON array, no other text or explanation
             4. Ensure the JSON is properly formatted and valid
-            5. Do NOT include any markdown code blocks or backticks
             
-            Bad examples:
+            Bad example:
             "Here are the media placements..." (no explanatory text wanted)
-            ```json
-            [{{"mediaType": "image"}}]
-            ``` (no code blocks wanted)
             
             Good example:
             [
@@ -247,9 +245,6 @@ class PostWriterV2:
             
             response = self.llm.invoke(format_prompt)
             formatted_json = response.content.strip()
-            
-            # Remove any markdown code blocks
-            formatted_json = formatted_json.replace('```json', '').replace('```', '').strip()
             
             # Validate JSON
             try:
@@ -269,25 +264,17 @@ class PostWriterV2:
             print("\n🔍 Starting post enhancement process...")
             print(f"Blog post length: {len(blog_post)} characters")
             
-            # Skip first 200 words
-            words = blog_post.split()
-            if len(words) > 200:
-                truncated_post = ' '.join(words[200:])
-                print(f"Skipping first 200 words. New length: {len(truncated_post)} characters")
-            else:
-                truncated_post = blog_post
-                print("Post shorter than 200 words, using full text")
-
             # Create the prompt for the agent
             prompt = f"""
             {self.system_message}
             
             Here's the blog post to enhance:
-            {truncated_post}
+            {blog_post}
 
-            First, scan the content for natural break points between paragraphs or sections. Each media placement MUST:
-            - Directly help readers understand the content or provide valuable visual context or demonstration
-            - Be placed BETWEEN paragraphs or sections, never within them
+            First, scan the content for natural break points between paragraphs or sections. For each potential location, evaluate:
+            - Will this media actually help readers better understand the content?
+            - Will this media provide valuable visual context or demonstration?
+            - Is this placement between paragraphs or sections?
 
             For each location you identify:
             1. Envision what would best help readers understand the content at this point.
