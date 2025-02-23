@@ -1,6 +1,6 @@
-from services.content_generator import ContentGenerator
-from services.media_service import PostWriterV2
-from services.linking_service import LinkingAgent
+from src.services.content_generator import ContentGenerator
+from src.services.media_service import PostWriterV2
+from src.services.linking_service import LinkingAgent
 import asyncio
 
 class ContentAPIHandler:
@@ -43,6 +43,7 @@ class ContentAPIHandler:
             
             # Add internal links (handle both async and sync cases)
             print("Starting internal linking...")
+            print("Hi")
             if asyncio.iscoroutinefunction(self.internal_linker.process_content_with_links):
                 final_post = await self.internal_linker.process_content_with_links(post_with_media, base_url)
             else:
