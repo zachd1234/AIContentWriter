@@ -11,9 +11,6 @@ import requests
 from api.serper_api import fetch_videos
 from api.wordpress_media_api import WordPressMediaHandler
 import re
-import vertexai
-from langchain_google_vertexai import VertexAI
-
 
 class GetImgAIClient:
     def __init__(self):
@@ -82,17 +79,15 @@ class PostWriterV2:
     def __init__(self):
         load_dotenv()
         
-        # Initialize Vertex AI
-        project_id = os.getenv('GOOGLE_CLOUD_PROJECT_ID')
-        vertexai.init(project=project_id, location="us-central1")
+        # Set Google Application Credentials
+        os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
         
-        # Initialize the LLM with correct model name
-        self.llm = VertexAI(
-            model_name="gemini-pro",  # Using the standard model name
+        # Initialize the LLM with Gemini configuration
+        self.llm = ChatGoogleGenerativeAI(
+            model="gemini-pro",
             temperature=0.7,
             max_output_tokens=2048,
-            project=project_id,
-            location="us-central1"
+            google_api_key=os.getenv('GOOGLE_API_KEY')
         )
         
         self.img_client = GetImgAIClient()
@@ -117,8 +112,8 @@ class PostWriterV2:
             agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
             verbose=True,
             handle_parsing_errors=True,
-            max_iterations=3,
-            early_stopping_method="generate"
+            max_iterations=3,  # Added to limit iterations
+            early_stopping_method="generate"  # Better handling of stopping conditions
         )
         
         # Set up the system message

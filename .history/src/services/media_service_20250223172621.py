@@ -88,7 +88,7 @@ class PostWriterV2:
         
         # Initialize the LLM with correct model name
         self.llm = VertexAI(
-            model_name="gemini-pro",  # Using the standard model name
+            model_name="gemini-1.0-pro",  # Using the standard model name
             temperature=0.7,
             max_output_tokens=2048,
             project=project_id,
