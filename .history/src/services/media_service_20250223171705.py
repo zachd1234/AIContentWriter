@@ -12,7 +12,7 @@ from api.serper_api import fetch_videos
 from api.wordpress_media_api import WordPressMediaHandler
 import re
 import vertexai
-from langchain_google_vertexai import VertexAI
+from vertexai.generative_models import GenerativeModel, GenerationConfig
 
 
 class GetImgAIClient:
@@ -82,19 +82,13 @@ class PostWriterV2:
     def __init__(self):
         load_dotenv()
         
-        # Initialize Vertex AI
+        # Set Google Application Credentials
         project_id = os.getenv('GOOGLE_CLOUD_PROJECT_ID')
         vertexai.init(project=project_id, location="us-central1")
-        
-        # Initialize the LLM with correct model name
-        self.llm = VertexAI(
-            model_name="gemini-pro",  # Using the standard model name
-            temperature=0.7,
-            max_output_tokens=2048,
-            project=project_id,
-            location="us-central1"
-        )
-        
+        self.model = GenerativeModel("gemini-2.0-flash-thinking-exp-01-21")
+
+
+
         self.img_client = GetImgAIClient()
         
         # Define the image generation tool
@@ -117,8 +111,8 @@ class PostWriterV2:
             agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
             verbose=True,
             handle_parsing_errors=True,
-            max_iterations=3,
-            early_stopping_method="generate"
+            max_iterations=3,  # Added to limit iterations
+            early_stopping_method="generate"  # Better handling of stopping conditions
         )
         
         # Set up the system message

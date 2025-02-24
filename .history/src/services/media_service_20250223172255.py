@@ -12,7 +12,7 @@ from api.serper_api import fetch_videos
 from api.wordpress_media_api import WordPressMediaHandler
 import re
 import vertexai
-from langchain_google_vertexai import VertexAI
+from langchain_google_vertexai import ChatVertexAI
 
 
 class GetImgAIClient:
@@ -86,9 +86,9 @@ class PostWriterV2:
         project_id = os.getenv('GOOGLE_CLOUD_PROJECT_ID')
         vertexai.init(project=project_id, location="us-central1")
         
-        # Initialize the LLM with correct model name
-        self.llm = VertexAI(
-            model_name="gemini-pro",  # Using the standard model name
+        # Initialize the LLM with Gemini 2.0 Pro Experimental
+        self.llm = ChatVertexAI(
+            model_name="gemini-2.0-pro-experimental",
             temperature=0.7,
             max_output_tokens=2048,
             project=project_id,

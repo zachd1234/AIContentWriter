@@ -6,7 +6,6 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from api.sitemap_api import fetch_posts_from_sitemap
 import json
-import re
 
 class LinkingAgent:
     def __init__(self):
@@ -18,7 +17,7 @@ class LinkingAgent:
         vertexai.init(project=project_id, location="us-central1")
         
         # Initialize model
-        self.model = GenerativeModel("gemini-2.0-flash-thinking-exp-01-21")
+        self.model = GenerativeModel("gemini-1.5-flash-002")
         
     def suggest_internal_links(self, post_content: str) -> str:
         """Suggests internal links for a given post content"""
@@ -91,7 +90,6 @@ class LinkingAgent:
     def process_content_with_links(self, content: str, base_url: str) -> str:
         """
         Processes the content by inserting suggested internal links.
-        Only adds each unique link once to avoid duplicate linking.
         
         Args:
             content (str): The content to process
@@ -109,21 +107,13 @@ class LinkingAgent:
             
             if not suggestions:
                 return content
-            
-            # Use regex to replace only the first occurrence of each anchor text
+                
             modified_content = content
-            
             for suggestion in suggestions:
                 anchor_text = suggestion['anchor_text']
                 target_url = suggestion['target_url']
                 html_link = f'<a href="{target_url}">{anchor_text}</a>'
-                
-                # Find first occurrence and replace it
-                index = modified_content.find(anchor_text)
-                if index != -1:
-                    before = modified_content[:index]
-                    after = modified_content[index + len(anchor_text):]
-                    modified_content = before + html_link + after
+                modified_content = modified_content.replace(anchor_text, html_link)
                 
             return modified_content
             

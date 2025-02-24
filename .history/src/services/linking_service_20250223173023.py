@@ -112,18 +112,27 @@ class LinkingAgent:
             
             # Use regex to replace only the first occurrence of each anchor text
             modified_content = content
+            linked_phrases = set()  # Track phrases we've already linked
             
             for suggestion in suggestions:
                 anchor_text = suggestion['anchor_text']
+                
+                # Skip if we've already linked this phrase
+                if anchor_text in linked_phrases:
+                    continue
+                    
                 target_url = suggestion['target_url']
                 html_link = f'<a href="{target_url}">{anchor_text}</a>'
                 
-                # Find first occurrence and replace it
-                index = modified_content.find(anchor_text)
-                if index != -1:
-                    before = modified_content[:index]
-                    after = modified_content[index + len(anchor_text):]
-                    modified_content = before + html_link + after
+                # Replace only the first occurrence using regex
+                modified_content = re.sub(
+                    f'(?<!<a[^>]*>)({re.escape(anchor_text)})(?![^<]*</a>)',
+                    html_link,
+                    modified_content,
+                    count=1
+                )
+                
+                linked_phrases.add(anchor_text)
                 
             return modified_content
             
