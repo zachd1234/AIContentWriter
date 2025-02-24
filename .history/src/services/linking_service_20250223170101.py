@@ -1,31 +1,30 @@
 import os
 from dotenv import load_dotenv
-import vertexai
-from vertexai.generative_models import GenerativeModel, GenerationConfig
+from langchain_google_genai import ChatGoogleGenerativeAI
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from api.sitemap_api import fetch_posts_from_sitemap
 import json
-import re
 
 class LinkingAgent:
     def __init__(self):
         # Load environment variables
         load_dotenv()
         
-        # Initialize Vertex AI
-        project_id = os.getenv('GOOGLE_CLOUD_PROJECT_ID')
-        vertexai.init(project=project_id, location="us-central1")
-        
-        # Initialize model
-        self.model = GenerativeModel("gemini-2.0-flash-thinking-exp-01-21")
+        # Initialize the LLM with Gemini configuration
+        self.llm = ChatGoogleGenerativeAI(
+            model="gemini-pro",
+            temperature=0.7,
+            max_output_tokens=2048,
+            google_api_key=os.getenv('GOOGLE_API_KEY')     
+        )
         
     def suggest_internal_links(self, post_content: str) -> str:
         """Suggests internal links for a given post content"""
         try:
             # Create the prompt with the available posts and content
             prompt = f"""You are an expert content editor specializing in internal linking.
-            Analyze this content and suggest high-value internal links from our available posts.
+            Analyze this content and suggest 2-3 high-value internal links from our available posts.
 
             Available posts for linking:
             {json.dumps(self.available_posts, indent=2)}
@@ -47,17 +46,12 @@ class LinkingAgent:
             - 'reasoning': why this link adds value
             """
             
-            # Get response from model
-            response = self.model.generate_content(
-                prompt,
-                generation_config=GenerationConfig(
-                    temperature=0.0
-                )
-            )
+            # Get response from LLM
+            response = self.llm.invoke(prompt)
             
             try:
                 # Find JSON in response
-                output_text = response.text
+                output_text = response.content
                 start = output_text.find('[')
                 end = output_text.rfind(']') + 1
                 
@@ -91,7 +85,6 @@ class LinkingAgent:
     def process_content_with_links(self, content: str, base_url: str) -> str:
         """
         Processes the content by inserting suggested internal links.
-        Only adds each unique link once to avoid duplicate linking.
         
         Args:
             content (str): The content to process
@@ -109,21 +102,13 @@ class LinkingAgent:
             
             if not suggestions:
                 return content
-            
-            # Use regex to replace only the first occurrence of each anchor text
+                
             modified_content = content
-            
             for suggestion in suggestions:
                 anchor_text = suggestion['anchor_text']
                 target_url = suggestion['target_url']
                 html_link = f'<a href="{target_url}">{anchor_text}</a>'
-                
-                # Find first occurrence and replace it
-                index = modified_content.find(anchor_text)
-                if index != -1:
-                    before = modified_content[:index]
-                    after = modified_content[index + len(anchor_text):]
-                    modified_content = before + html_link + after
+                modified_content = modified_content.replace(anchor_text, html_link)
                 
             return modified_content
             
