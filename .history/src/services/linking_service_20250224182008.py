@@ -37,33 +37,14 @@ class LinkingAgent:
             - Use natural, contextual anchor text (no "click here" or "read more")
             - Ensure links are topically relevant
             - Choose anchor text that appears in the original content
-            - Space out links throughout the entire post. Don't excessively add links in one paragraph.
+            - Space out links throughout the content
             - Only suggest links to posts from the available posts list
 
-            IMPORTANT: You must return ONLY a valid JSON array with no additional text, explanation, or markdown formatting.
-            Each object in the array must have these exact fields:
+            Return a JSON array of link suggestions, each containing:
             - 'anchor_text': natural phrase from the content
             - 'target_url': matching post URL
             - 'context': surrounding paragraph or sentence
             - 'reasoning': why this link adds value
-
-            Example of the expected format:
-            [
-              {{
-                "anchor_text": "rucking vests",
-                "target_url": "https://example.com/vests",
-                "context": "The surrounding text where the anchor text appears",
-                "reasoning": "This link connects the mention of vests to a detailed guide"
-              }},
-              {{
-                "anchor_text": "another phrase",
-                "target_url": "https://example.com/another",
-                "context": "More surrounding text",
-                "reasoning": "Another reason"
-              }}
-            ]
-
-            Return ONLY the JSON array with no additional text or explanation.
             """
             
             # Get response from model
@@ -130,11 +111,12 @@ class LinkingAgent:
                 return content
             
             # Format the response
+            formatted_links = self.format_link_response(suggestions)
             
             # Use regex to replace only the first occurrence of each anchor text
             modified_content = content
             
-            for suggestion in suggestions:
+            for suggestion in formatted_links:
                 anchor_text = suggestion['anchor_text']
                 target_url = suggestion['target_url']
                 html_link = f'<a href="{target_url}">{anchor_text}</a>'
@@ -182,16 +164,8 @@ class LinkingAgent:
             ]
             """
             
-            # Use the correct method for your model type
-            response = self.model.generate_content(format_prompt)
-            
-            # Extract text based on the model's response structure
-            if hasattr(response, 'text'):
-                formatted_json = response.text.strip()
-            elif hasattr(response, 'content'):
-                formatted_json = response.content.strip()
-            else:
-                formatted_json = str(response).strip()
+            response = self.model.invoke(format_prompt)
+            formatted_json = response.content.strip()
             
             # Remove any markdown code blocks (including variations with different numbers of backticks)
             formatted_json = re.sub(r'```+\s*json\s*', '', formatted_json)

@@ -37,7 +37,7 @@ class LinkingAgent:
             - Use natural, contextual anchor text (no "click here" or "read more")
             - Ensure links are topically relevant
             - Choose anchor text that appears in the original content
-            - Space out links throughout the entire post. Don't excessively add links in one paragraph.
+            - Space out links throughout the content
             - Only suggest links to posts from the available posts list
 
             IMPORTANT: You must return ONLY a valid JSON array with no additional text, explanation, or markdown formatting.
