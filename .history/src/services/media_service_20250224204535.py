@@ -145,7 +145,6 @@ class GetImgAIClient:
             
             print("\n🤔 Selecting best video...")
             response = self.llm.invoke(selection_prompt)
-            print("Response: ", response.content, response)
             best_video_url = response.content.strip()
             print("✅ Selected video URL:", best_video_url)
             
