@@ -37,33 +37,14 @@ class LinkingAgent:
             - Use natural, contextual anchor text (no "click here" or "read more")
             - Ensure links are topically relevant
             - Choose anchor text that appears in the original content
-            - Space out links throughout the entire post. Don't excessively add links in one paragraph.
+            - Space out links throughout the content
             - Only suggest links to posts from the available posts list
 
-            IMPORTANT: You must return ONLY a valid JSON array with no additional text, explanation, or markdown formatting.
-            Each object in the array must have these exact fields:
+            Return a JSON array of link suggestions, each containing:
             - 'anchor_text': natural phrase from the content
             - 'target_url': matching post URL
             - 'context': surrounding paragraph or sentence
             - 'reasoning': why this link adds value
-
-            Example of the expected format:
-            [
-              {{
-                "anchor_text": "rucking vests",
-                "target_url": "https://example.com/vests",
-                "context": "The surrounding text where the anchor text appears",
-                "reasoning": "This link connects the mention of vests to a detailed guide"
-              }},
-              {{
-                "anchor_text": "another phrase",
-                "target_url": "https://example.com/another",
-                "context": "More surrounding text",
-                "reasoning": "Another reason"
-              }}
-            ]
-
-            Return ONLY the JSON array with no additional text or explanation.
             """
             
             # Get response from model
@@ -129,8 +110,6 @@ class LinkingAgent:
             if not suggestions:
                 return content
             
-            # Format the response
-            
             # Use regex to replace only the first occurrence of each anchor text
             modified_content = content
             
@@ -151,69 +130,6 @@ class LinkingAgent:
         except Exception as e:
             print(f"Error in link processing: {str(e)}")
             return content
-
-    def format_link_response(self, agent_output: str) -> list:
-        """Uses LLM to standardize the link suggestions format"""
-        try:
-            format_prompt = f"""
-            Extract the link suggestions from this agent output and format them as a clean JSON array.
-            
-            Input:
-            {agent_output}
-            
-            Rules:
-            1. Each object must have these exact fields:
-               - anchorText
-               - targetUrl
-               - context
-               - reasoning
-            2. Return ONLY the JSON array, no other text or explanation
-            3. Ensure the JSON is properly formatted and valid
-            4. Do NOT include any markdown code blocks or backticks
-            
-            Good example:
-            [
-              {{
-                "anchorText": "rucking vests",
-                "targetUrl": "https://example.com/vests",
-                "context": "The surrounding text where the link should be placed",
-                "reasoning": "Why this link is relevant"
-              }}
-            ]
-            """
-            
-            # Use the correct method for your model type
-            response = self.model.generate_content(format_prompt)
-            
-            # Extract text based on the model's response structure
-            if hasattr(response, 'text'):
-                formatted_json = response.text.strip()
-            elif hasattr(response, 'content'):
-                formatted_json = response.content.strip()
-            else:
-                formatted_json = str(response).strip()
-            
-            # Remove any markdown code blocks (including variations with different numbers of backticks)
-            formatted_json = re.sub(r'```+\s*json\s*', '', formatted_json)
-            formatted_json = re.sub(r'```+', '', formatted_json)
-            formatted_json = formatted_json.strip()
-            
-            # Find JSON array pattern if still having issues
-            json_pattern = re.search(r'\[\s*\{.*?\}\s*\]', formatted_json, re.DOTALL)
-            if json_pattern:
-                formatted_json = json_pattern.group(0)
-            
-            # Validate JSON
-            try:
-                links = json.loads(formatted_json)
-                return links
-            except json.JSONDecodeError:
-                print("❌ Formatter produced invalid JSON for links")
-                return []
-                
-        except Exception as e:
-            print(f"❌ Error in format_link_response: {str(e)}")
-            return []
 
 def main():
     test_content = """

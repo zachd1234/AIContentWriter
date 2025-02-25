@@ -95,7 +95,7 @@ async def main():
     api = ContentAPIHandler()
     
     # Test keyword
-    test_keyword = "How to start rucking"
+    test_keyword = "How Much Weight Should I Ruck With?"
     
     print(f"\nGenerating complete post for keyword: {test_keyword}")
     print("-" * 50)
