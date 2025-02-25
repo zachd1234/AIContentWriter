@@ -127,35 +127,24 @@ class GetImgAIClient:
                 print("❌ No videos found")
                 return "No videos found"
                 
-            # Step 3: Select best matching video - IMPROVED PROMPT
+            # Step 3: Select best matching video
             selection_prompt = f"""Given this vision for a video:
             '{vision}'
             
             Select the best matching video from these results:
-            {json.dumps(videos, indent=2)}
+            {videos}
             
             Consider:
             - How well it matches the vision
             - Video quality and professionalism
             - Educational value
             
-            IMPORTANT: You must return ONLY the complete YouTube URL with no additional text.
-            For example: https://www.youtube.com/watch?v=abcdef
-            Do not include any explanations, just the URL."""
+            Return ONLY the YouTube URL of the best video."""
             
             print("\n🤔 Selecting best video...")
             response = self.llm.invoke(selection_prompt)
-            print("Response: ", response.content, response)
             best_video_url = response.content.strip()
             print("✅ Selected video URL:", best_video_url)
-            
-            # Validate the URL format
-            if not best_video_url.startswith("https://www.youtube.com/watch?v="):
-                print("⚠️ Invalid URL format, selecting first video as fallback")
-                # Fallback: use the first video if the response isn't a valid URL
-                if videos and len(videos) > 0 and "link" in videos[0]:
-                    best_video_url = videos[0]["link"]
-                    print("✅ Using fallback video URL:", best_video_url)
             
             return best_video_url
             
