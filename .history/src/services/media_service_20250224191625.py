@@ -330,12 +330,6 @@ class PostWriterV2:
             - Be placed BETWEEN paragraphs or sections, never within them
             - Make sense in the overall context of the post
                         
-            IMPORTANT: When using tools, you MUST follow this EXACT format:
-            
-            Thought: I need to [describe your reasoning]
-            Action: [tool name]
-            Action Input: [tool input]
-
             Available tools:
             
             - GenerateImage
