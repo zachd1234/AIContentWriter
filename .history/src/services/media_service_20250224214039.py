@@ -5,14 +5,12 @@ from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.tools import Tool
 from langchain.agents import initialize_agent, AgentType
-import google.generativeai as genai
-from typing import Dict, List
+from typing import Dict
 import json
 import requests
 from api.serper_api import fetch_videos
 from api.wordpress_media_api import WordPressMediaHandler
 import re
-from pydantic import BaseModel
 
 class GetImgAIClient:
     def __init__(self, base_url: str):
@@ -334,22 +332,48 @@ class PostWriterV2:
         try:
             print(f"\n🔍 Raw agent output (first 200 chars): {agent_output[:200]}...")
             
-            # Configure genai with API key
+            # Define a Pydantic model for our media items
+            from pydantic import BaseModel
+            from typing import List
+            
+            class MediaItem(BaseModel):
+                insertBefore: str
+                mediaType: str
+                mediaUrl: str
+                description: str
+            
+            # Create a client using the newer google.genai library
+            from google import genai
             genai.configure(api_key=os.getenv('GOOGLE_API_KEY'))
             
-            # Create the model with structured output configuration
+            # Create the prompt for structured output
+            structured_prompt = f"""
+            Parse the following text and extract a valid JSON array of media placements.
+            
+            Text to parse:
+            {agent_output}
+            
+            Each media item must have these exact fields:
+            - insertBefore: The text in the blog post where the media should be inserted
+            - mediaType: Either "image" or "video"
+            - mediaUrl: The URL of the media
+            - description: A description of the media
+            """
+            
+            # Create a model with structured output configuration
             model = genai.GenerativeModel(
-                model_name="gemini-1.5-flash",
+                model_name="gemini-1.5-flash",  # Use 1.5-flash which supports structured output
                 generation_config={
-                    "temperature": 0.1,
+                    "temperature": 0.1,  # Low temperature for deterministic output
                 }
             )
             
-            # Generate structured response
+            # Generate structured response with schema
             response = model.generate_content(
-                contents=agent_output,
+                structured_prompt,
                 generation_config={
-                    "response_mime_type": "application/json"
+                    "response_mime_type": "application/json",
+                    "response_schema": List[MediaItem],
                 }
             )
             
@@ -450,85 +474,65 @@ class PostWriterV2:
         except Exception as e:
             print(f"Error in media population: {str(e)}")
             return html_content
-def main():
-   post_writer = PostWriterV2(base_url="https://ruckquest.com")
-   sample_post = """<h1>How to Start Rucking: A Comprehensive Guide</h1>
 
+def main():
+    post_writer = PostWriterV2(base_url="https://ruckquest.com")
+    sample_post = """<h1>How to Start Rucking: A Comprehensive Guide</h1>
 
 <h2>What is Rucking?</h2>
 
-
 <p>Rucking is simply <strong>walking with weight on your back</strong>.  It's a low-impact, full-body workout that combines cardiovascular exercise with strength training.  Unlike running, rucking is gentler on your joints, making it accessible to a wider range of fitness levels.  The added weight challenges your muscles, improving strength and endurance.  It's a versatile activity that can be done virtually anywhere – from city streets to hiking trails.</p>
-
 
 <h2>Why Start Rucking?</h2>
 
-
 <p>Rucking offers a multitude of benefits, making it a popular choice for fitness enthusiasts and those seeking a unique workout experience:</p>
 
-
 <ul>
- <li><strong>Improved Cardiovascular Health:</strong> Rucking elevates your heart rate, improving cardiovascular fitness and reducing the risk of heart disease.</li>
- <li><strong>Increased Strength and Endurance:</strong> The added weight strengthens your legs, core, and back muscles, building both strength and endurance.</li>
- <li><strong>Calorie Burning:</strong> Rucking burns significantly more calories than regular walking, aiding in weight loss and management.</li>
- <li><strong>Enhanced Mental Well-being:</strong>  The outdoor nature of rucking and the potential for social interaction contribute to improved mental health and stress reduction.</li>
- <li><strong>Low Impact Exercise:</strong>  Unlike high-impact activities like running, rucking is easier on your joints, reducing the risk of injury.</li>
- <li><strong>Improved Posture:</strong>  The weight on your back encourages better posture and core engagement.</li>
+  <li><strong>Improved Cardiovascular Health:</strong> Rucking elevates your heart rate, improving cardiovascular fitness and reducing the risk of heart disease.</li>
+  <li><strong>Increased Strength and Endurance:</strong> The added weight strengthens your legs, core, and back muscles, building both strength and endurance.</li>
+  <li><strong>Calorie Burning:</strong> Rucking burns significantly more calories than regular walking, aiding in weight loss and management.</li>
+  <li><strong>Enhanced Mental Well-being:</strong>  The outdoor nature of rucking and the potential for social interaction contribute to improved mental health and stress reduction.</li>
+  <li><strong>Low Impact Exercise:</strong>  Unlike high-impact activities like running, rucking is easier on your joints, reducing the risk of injury.</li>
+  <li><strong>Improved Posture:</strong>  The weight on your back encourages better posture and core engagement.</li>
 </ul>
-
-
 
 
 <h2>Getting Started: Your First Ruck</h2>
 
-
 <h3>1. Choose Your Gear:</h3>
 
-
 <ul>
- <li><strong>Ruckpack:</strong> Invest in a comfortable and durable ruckpack designed for carrying weight.  Avoid using a flimsy backpack; a dedicated ruckpack provides better weight distribution and support.</li>
- <li><strong>Weight:</strong> Start with a manageable weight, such as 10-25 pounds.  You can use readily available weights like dumbbells wrapped in a towel, or specialized ruck plates. Gradually increase the weight as you get stronger.  Never exceed 1/3 of your body weight.</li>
- <li><strong>Footwear:</strong> Wear comfortable and supportive shoes or boots suitable for walking or hiking.  Good traction is essential, especially on uneven terrain.</li>
- <li><strong>Clothing:</strong> Wear moisture-wicking clothing appropriate for the weather conditions.  Layers are recommended to adjust to changing temperatures.</li>
+  <li><strong>Ruckpack:</strong> Invest in a comfortable and durable ruckpack designed for carrying weight.  Avoid using a flimsy backpack; a dedicated ruckpack provides better weight distribution and support.</li>
+  <li><strong>Weight:</strong> Start with a manageable weight, such as 10-25 pounds.  You can use readily available weights like dumbbells wrapped in a towel, or specialized ruck plates. Gradually increase the weight as you get stronger.  Never exceed 1/3 of your body weight.</li>
+  <li><strong>Footwear:</strong> Wear comfortable and supportive shoes or boots suitable for walking or hiking.  Good traction is essential, especially on uneven terrain.</li>
+  <li><strong>Clothing:</strong> Wear moisture-wicking clothing appropriate for the weather conditions.  Layers are recommended to adjust to changing temperatures.</li>
 </ul>
-
 
 <h3>2. Plan Your Route:</h3>
 
-
 <p>Begin with short distances, such as 1-2 miles, on relatively flat terrain.  As you gain experience, you can gradually increase the distance and challenge yourself with more varied routes.</p>
-
 
 <h3>3. Warm-up and Cool-down:</h3>
 
-
 <p>Always warm up before starting your ruck with light cardio, such as a brisk walk or some dynamic stretches.  Cool down afterward with static stretches to improve flexibility and reduce muscle soreness.</p>
-
 
 <h3>4. Pace Yourself:</h3>
 
-
 <p>Maintain a comfortable pace.  Aim for a pace of 15-20 minutes per mile initially.  If you find yourself moving slower than 20 minutes per mile, reduce the weight.  Listen to your body and take breaks when needed.</p>
-
 
 <h3>5. Stay Hydrated:</h3>
 
-
 <p>Carry water with you, especially during longer rucks.  Dehydration can significantly impact your performance and well-being.</p>
 
-
 <h3>6. Gradual Progression:</h3>
-
 
 <p>Start with 1-2 rucking sessions per week.  Gradually increase the frequency, duration, distance, and weight as your fitness improves.  Avoid increasing any of these factors by more than 10% per week.</p>
 """
 
-
-   enhanced_post = post_writer.populate_media_in_html(
-       sample_post
-   )
-   print(f"Enhanced Post: {enhanced_post}")
-
+    enhanced_post = post_writer.populate_media_in_html(
+        sample_post
+    )
+    print(f"Enhanced Post: {enhanced_post}")
 
 if __name__ == "__main__":
-   main()
+    main() 
