@@ -323,13 +323,18 @@ class PostWriterV2:
             1. Read the blog post and identify 2-3 good places to add media between paragraphs
             2. For each place, decide whether an image or video would be most helpful
             3. Use the appropriate tool (GenerateImage or GetYouTubeVideo) to create that media
-            4. After using all tools, compile your results into a JSON array
+                                    4. After using all tools, compile your results into a JSON array            4. After using all tools, compile your results into a JSON array
             
             Each media placement MUST:
             - Directly help readers understand the content or provide valuable visual context
             - Be placed BETWEEN paragraphs or sections, never within them
-            - Make sense in the overall context of the post
-                        
+            
+            IMPORTANT: When using tools, you MUST follow this EXACT format:
+            
+            Thought: I need to [describe your reasoning]
+            Action: [tool name]
+            Action Input: [tool input]
+            
             Available tools:
             
             - GenerateImage

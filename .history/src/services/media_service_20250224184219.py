@@ -328,25 +328,18 @@ class PostWriterV2:
             Each media placement MUST:
             - Directly help readers understand the content or provide valuable visual context
             - Be placed BETWEEN paragraphs or sections, never within them
-            - Make sense in the overall context of the post
-                        
+            
             Available tools:
             
             - GenerateImage
                 Creates AI-generated illustrations to help visualize concepts
                 * Best for: atmospheric scenes, conceptual illustrations, visual metaphors
-                * CORRECT USAGE EXAMPLE:
-                  Thought: I need an image showing proper rucking technique
-                  Action: GenerateImage
-                  Action Input: A person rucking through a forest trail with proper posture
+                * Example usage: GenerateImage("A person rucking through a forest trail with proper posture")
             
             - GetYouTubeVideo
                 Finds existing YouTube content
                 * Best for: expert explanations, real demonstrations, educational content
-                * CORRECT USAGE EXAMPLE:
-                  Thought: I need a video demonstrating rucking technique
-                  Action: GetYouTubeVideo
-                  Action Input: Proper rucking technique demonstration
+                * Example usage: GetYouTubeVideo("Proper rucking technique demonstration")
 
             Return your suggestions as a JSON array where each object contains:
             - 'insertBefore': the exact text where media should be inserted

@@ -95,13 +95,13 @@ async def main():
     api = ContentAPIHandler()
     
     # Test keyword
-    test_keyword = "How to start rucking"
+    test_keyword = "How Much Weight Should I Ruck With?"
     
     print(f"\nGenerating complete post for keyword: {test_keyword}")
     print("-" * 50)
     
     # Generate the post
-    result = await api.generate_complete_post(test_keyword, "https://ruckquest.com")
+    result = await api.generate_complete_post(test_keyword, "https://mbt.dsc.mybluehost.me")
     
     # Print the result
     if result["status"] == "success":

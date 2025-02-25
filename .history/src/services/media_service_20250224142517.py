@@ -212,7 +212,7 @@ class PostWriterV2:
         - Limit media to 3 placements maximum"""
 
     def format_json_response(self, agent_output: str) -> str:
-        """Uses LLM to standardize the JSON format and filter out hallucinations"""
+        """Uses LLM to standardize the JSON format"""
         try:
             format_prompt = f"""
             Extract the media placements from this agent output and format them as a clean JSON array.
@@ -261,34 +261,10 @@ class PostWriterV2:
             if json_pattern:
                 formatted_json = json_pattern.group(0)
             
-            # Validate JSON and filter out hallucinations
+            # Validate JSON
             try:
-                media_items = json.loads(formatted_json)
-                valid_media = []
-                
-                for item in media_items:
-                    media_url = item.get("mediaUrl", "")
-                    media_type = item.get("mediaType", "")
-                    
-                    # Check for valid URLs based on media type
-                    is_valid = False
-                    if media_type == "image":
-                        # For images, check if it's a numeric WordPress media ID or a valid URL
-                        is_valid = (media_url.isdigit() or 
-                                   media_url.startswith("http") and 
-                                   not media_url.startswith("Error"))
-                    elif media_type == "video":
-                        # For videos, check if it contains youtube.com
-                        is_valid = "youtube.com" in media_url
-                    
-                    if is_valid:
-                        valid_media.append(item)
-                        print(f"✅ Valid media: {media_type} - {media_url[:50]}...")
-                    else:
-                        print(f"❌ Filtered out hallucinated media: {media_type} - {media_url[:50]}...")
-                
-                return json.dumps(valid_media, indent=2)
-                
+                json.loads(formatted_json)
+                return formatted_json
             except json.JSONDecodeError:
                 print("❌ Formatter produced invalid JSON")
                 return "[]"
@@ -319,34 +295,28 @@ class PostWriterV2:
             Here's the blog post to enhance:
             {truncated_post}
 
-            INSTRUCTIONS FOR USING TOOLS:
-            1. Read the blog post and identify 2-3 good places to add media between paragraphs
-            2. For each place, decide whether an image or video would be most helpful
-            3. Use the appropriate tool (GenerateImage or GetYouTubeVideo) to create that media
-            4. After using all tools, compile your results into a JSON array
-            
-            Each media placement MUST:
-            - Directly help readers understand the content or provide valuable visual context
+            First, scan the content for natural break points between paragraphs or sections. Each media placement MUST:
+            - Directly help readers understand the content or provide valuable visual context or demonstration
             - Be placed BETWEEN paragraphs or sections, never within them
-            - Make sense in the overall context of the post
-                        
-            Available tools:
+
+            For each location you identify:
+            1. Envision what would best help readers understand the content at this point.
+
+            You have these tools available:
             
             - GenerateImage
                 Creates AI-generated illustrations to help visualize concepts
                 * Best for: atmospheric scenes, conceptual illustrations, visual metaphors
-                * CORRECT USAGE EXAMPLE:
-                  Thought: I need an image showing proper rucking technique
-                  Action: GenerateImage
-                  Action Input: A person rucking through a forest trail with proper posture
+                * Best when: abstract concepts need visualization
+                * Not suitable for: technical diagrams, real-world documentation, precise details
             
             - GetYouTubeVideo
                 Finds existing YouTube content
+                * Will find the best video on YouTube that matches the vision
                 * Best for: expert explanations, real demonstrations, educational content
-                * CORRECT USAGE EXAMPLE:
-                  Thought: I need a video demonstrating rucking technique
-                  Action: GetYouTubeVideo
-                  Action Input: Proper rucking technique demonstration
+
+            For each chosen location, use the appropriate tool to create media that best matches your vision.
+            If no tool can adequately fulfill the vision, skip this placement.
 
             Return your suggestions as a JSON array where each object contains:
             - 'insertBefore': the exact text where media should be inserted
@@ -354,7 +324,8 @@ class PostWriterV2:
             - 'mediaUrl': the URL from either GenerateImage or GetYouTubeVideo
             - 'description': a specific explanation of how this media enhances understanding
 
-            ONLY include media that was successfully created using the tools above.
+            MAKE SURE THAT THE JSON ARRAY ONLY CONTAINS THE MEDIA PLACEMENTS THAT YOU GENERATED.
+            Do not include any media that wasn't successfully created using the tools above. If you only generated one placement, include that and only that in the JSON array.
             """
             
             print("\n🤖 Invoking agent...")
