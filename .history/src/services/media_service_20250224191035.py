@@ -312,7 +312,7 @@ class PostWriterV2:
                 truncated_post = blog_post
                 print("Post shorter than 200 words, using full text")
 
-            # Create the prompt for the agent with clearer instructions
+            # Create the prompt for the agent
             prompt = f"""
             {self.system_message}
             
@@ -322,7 +322,7 @@ class PostWriterV2:
             INSTRUCTIONS FOR USING TOOLS:
             1. Read the blog post and identify 2-3 good places to add media between paragraphs
             2. For each place, decide whether an image or video would be most helpful
-            3. Use the appropriate tool (GenerateImage or GetYouTubeVideo) to create that media            
+            3. Use the appropriate tool (GenerateImage or GetYouTubeVideo) to create that media
             4. After using all tools, compile your results into a JSON array
             
             Each media placement MUST:
@@ -330,12 +330,6 @@ class PostWriterV2:
             - Be placed BETWEEN paragraphs or sections, never within them
             - Make sense in the overall context of the post
                         
-            IMPORTANT: When using tools, you MUST follow this EXACT format:
-            
-            Thought: I need to [describe your reasoning]
-            Action: [tool name]
-            Action Input: [tool input]
-
             Available tools:
             
             - GenerateImage
@@ -354,28 +348,13 @@ class PostWriterV2:
                   Action: GetYouTubeVideo
                   Action Input: Proper rucking technique demonstration
 
-            FINAL OUTPUT FORMAT:
-            After using the tools, return ONLY a JSON array with this EXACT format:
-            [
-              {{
-                "insertBefore": "exact text from the blog post",
-                "mediaType": "image",
-                "mediaUrl": "https://example.com/image.jpg",
-                "description": "explanation of how this helps"
-              }},
-              {{
-                "insertBefore": "another exact text from the blog post",
-                "mediaType": "video",
-                "mediaUrl": "https://youtube.com/watch?v=abcdef",
-                "description": "explanation of how this helps"
-              }}
-            ]
+            Return your suggestions as a JSON array where each object contains:
+            - 'insertBefore': the exact text where media should be inserted
+            - 'mediaType': either 'image' or 'video'
+            - 'mediaUrl': the URL from either GenerateImage or GetYouTubeVideo
+            - 'description': a specific explanation of how this media enhances understanding
 
-            IMPORTANT RULES FOR FINAL OUTPUT:
-            2. For images, the mediaUrl must be the URL returned by GenerateImage
-            3. For videos, the mediaUrl must be the YouTube URL returned by GetYouTubeVideo
-            4. Do NOT include any explanatory text, code blocks, or backticks
-            5. Return ONLY the JSON array
+            ONLY include media that was successfully created using the tools above.
             """
             
             print("\n🤖 Invoking agent...")
@@ -390,8 +369,12 @@ class PostWriterV2:
             print(f"\n🔍 Parsing output: {output_text[:200]}...")  # First 200 chars
             
             try:
-                # Validate the JSON format
-                return self.validate_json_response(output_text)
+                # Format the response
+                print("\n🔄 Formatting JSON response...")
+                formatted_json = self.format_json_response(output_text)
+                print(f"\n✨ Formatted JSON: {formatted_json}")
+                
+                return formatted_json
                 
             except json.JSONDecodeError as e:
                 print(f"\n❌ JSON parsing error: {str(e)}")
@@ -400,65 +383,6 @@ class PostWriterV2:
             
         except Exception as e:
             print(f"\n❌ Error in enhance_post: {str(e)}")
-            return "[]"
-
-    def validate_json_response(self, agent_output: str) -> str:
-        """Validates the JSON format and filters out hallucinations"""
-        try:
-            # Clean up the output to extract just the JSON array
-            cleaned_output = agent_output.strip()
-            
-            # Remove any markdown code blocks
-            cleaned_output = re.sub(r'```+\s*json\s*', '', cleaned_output)
-            cleaned_output = re.sub(r'```+', '', cleaned_output)
-            cleaned_output = cleaned_output.strip('`').strip()
-            
-            # Find the JSON array pattern if needed
-            json_pattern = re.search(r'\[\s*\{.*?\}\s*\]', cleaned_output, re.DOTALL)
-            if json_pattern:
-                cleaned_output = json_pattern.group(0)
-            
-            # Parse the JSON
-            try:
-                media_items = json.loads(cleaned_output)
-            except json.JSONDecodeError:
-                print("❌ Invalid JSON format")
-                return "[]"
-            
-            # Validate each media item
-            valid_media = []
-            for item in media_items:
-                # Check required fields
-                if not all(key in item for key in ["insertBefore", "mediaType", "mediaUrl", "description"]):
-                    print("❌ Missing required fields in media item")
-                    continue
-                
-                media_url = item["mediaUrl"]
-                media_type = item["mediaType"]
-                
-                # Validate based on media type
-                is_valid = False
-                if media_type == "image":
-                    # For images: WordPress URL or numeric ID
-                    is_valid = (
-                        "wp-content/uploads" in media_url or
-                        media_url.isdigit() or
-                        (media_url.startswith("http") and not media_url.startswith("Error"))
-                    )
-                elif media_type == "video":
-                    # For videos: must be YouTube URL
-                    is_valid = "youtube.com" in media_url
-                
-                if is_valid:
-                    valid_media.append(item)
-                    print(f"✅ Valid media: {media_type} - {media_url[:50]}...")
-                else:
-                    print(f"❌ Invalid media URL: {media_url[:50]}...")
-            
-            return json.dumps(valid_media, indent=2)
-            
-        except Exception as e:
-            print(f"❌ Error validating JSON: {str(e)}")
             return "[]"
 
     def populate_media_in_html(self, html_content: str, base_url: str = None) -> str:
