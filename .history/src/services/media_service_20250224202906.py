@@ -210,6 +210,90 @@ class PostWriterV2:
         - The insertBefore value must be an exact copy of text from the blog post
         - Space out the media placements so that they are not all bunched up together
         - Limit media to 3 placements maximum"""
+
+    def format_json_response(self, agent_output: str) -> str:
+        """Uses LLM to standardize the JSON format and filter out hallucinations"""
+        try:
+            format_prompt = f"""
+            Extract the media placements from this agent output and format them as a clean JSON array.
+            
+            Input:
+            {agent_output}
+            
+            Rules:
+            1. Include ONLY media that was actually generated (has a real URL)
+            2. Each object must have these exact fields:
+               - insertBefore
+               - mediaType
+               - mediaUrl
+               - description
+            3. Return ONLY the JSON array, no other text or explanation
+            4. Ensure the JSON is properly formatted and valid
+            5. Do NOT include any markdown code blocks or backticks
+            
+            Bad examples:
+            "Here are the media placements..." (no explanatory text wanted)
+            ```json
+            [{{"mediaType": "image"}}]
+            ``` (no code blocks wanted)
+            
+            Good example:
+            [
+              {{
+                "insertBefore": "exact text",
+                "mediaType": "video",
+                "mediaUrl": "https://...",
+                "description": "explanation"
+              }}
+            ]
+            """
+            
+            response = self.llm.invoke(format_prompt)
+            formatted_json = response.content.strip()
+            
+            # Remove any markdown code blocks (including variations with different numbers of backticks)
+            formatted_json = re.sub(r'```+\s*json\s*', '', formatted_json)
+            formatted_json = re.sub(r'```+', '', formatted_json)
+            formatted_json = formatted_json.strip()
+            
+            # Find JSON array pattern if still having issues
+            json_pattern = re.search(r'\[\s*\{.*?\}\s*\]', formatted_json, re.DOTALL)
+            if json_pattern:
+                formatted_json = json_pattern.group(0)
+            
+            # Validate JSON and filter out hallucinations
+            try:
+                media_items = json.loads(formatted_json)
+                valid_media = []
+                
+                for item in media_items:
+                    media_url = item.get("mediaUrl", "")
+                    media_type = item.get("mediaType", "")
+                    
+                    # Check for valid URLs based on media type
+                    is_valid = False
+                    if media_type == "image":
+                        # For images, check if it's a numeric WordPress media ID or a valid URL
+                        is_valid = "wp-content/uploads" in media_url
+                    elif media_type == "video":
+                        # For videos, check if it contains youtube.com
+                        is_valid = "youtube.com" in media_url
+                    
+                    if is_valid:
+                        valid_media.append(item)
+                        print(f"✅ Valid media: {media_type} - {media_url[:50]}...")
+                    else:
+                        print(f"❌ Filtered out hallucinated media: {media_type} - {media_url[:50]}...")
+                
+                return json.dumps(valid_media, indent=2)
+                
+            except json.JSONDecodeError:
+                print("❌ Formatter produced invalid JSON")
+                return "[]"
+                
+        except Exception as e:
+            print(f"❌ Error in format_json_response: {str(e)}")
+            return "[]"    
     
     def enhance_post(self, blog_post: str) -> str:
         """Enhances the blog post with AI-generated images"""
@@ -353,7 +437,7 @@ class PostWriterV2:
                 # Validate based on media type
                 is_valid = False
                 if media_type == "image":
-                    # For images: WordPress URL 
+                    # For images: WordPress URL or numeric ID
                     is_valid = "wp-content/uploads" in media_url
                 elif media_type == "video":
                     # For videos: must be YouTube URL
