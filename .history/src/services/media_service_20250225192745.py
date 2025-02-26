@@ -24,7 +24,7 @@ class GetImgAIClient:
         
         # Initialize Gemini for prompt enhancement
         self.llm = ChatGoogleGenerativeAI(
-            model="models/gemini-2.0-flash-thinking-exp-01-21",
+            model="models/gemini-1.5-pro",  # Updated with full model path
             temperature=0.7,
             google_api_key=os.getenv('GOOGLE_API_KEY')
         )
@@ -177,7 +177,7 @@ class PostWriterV2:
         
         # Initialize the LLM with Gemini configuration
         self.llm = ChatGoogleGenerativeAI(
-            model="models/gemini-2.0-flash-thinking-exp-01-21",
+            model="models/gemini-1.5-pro",  # Updated with full model path
             temperature=0.7,
             max_output_tokens=2048,
             google_api_key=os.getenv('GOOGLE_API_KEY')
@@ -239,24 +239,6 @@ class PostWriterV2:
                 truncated_post = blog_post
                 print("Post shorter than 200 words, using full text")
 
-            # Define the response schema for structured output
-            response_schema = {
-                "type": "ARRAY",
-                "items": {
-                    "type": "OBJECT",
-                    "properties": {
-                        "insertBefore": {"type": "STRING"},
-                        "mediaType": {
-                            "type": "STRING",
-                            "enum": ["image", "video"]
-                        },
-                        "mediaUrl": {"type": "STRING"},
-                        "description": {"type": "STRING"}
-                    },
-                    "required": ["insertBefore", "mediaType", "mediaUrl", "description"]
-                }
-            }
-
             # Create the prompt for the agent with clearer instructions
             prompt = f"""
             {self.system_message}
@@ -317,59 +299,129 @@ class PostWriterV2:
             ]
 
             IMPORTANT RULES FOR FINAL OUTPUT:
-            1. For images, the mediaUrl must be the URL returned by GenerateImage
-            2. For videos, the mediaUrl must be the YouTube URL returned by GetYouTubeVideo
-            3. The "insertBefore" value must be an EXACT copy-paste from the blog post. Include all HTML tags exactly as they appear (<p>, </p>, etc. Include all whitespace and line breaks exactly
-            6. Do NOT include any explanatory text, code blocks, or backticks
-            7. Return ONLY the JSON array
+            2. For images, the mediaUrl must be the URL returned by GenerateImage
+            3. For videos, the mediaUrl must be the YouTube URL returned by GetYouTubeVideo
+            4. Do NOT include any explanatory text, code blocks, or backticks
+            5. Return ONLY the JSON array
             """
-
-            # Configure genai with API key
-            genai.configure(api_key=os.getenv('GOOGLE_API_KEY'))
             
-            # Create the model with structured output configuration
-            model = genai.GenerativeModel(
-                model_name="gemini-2.0-flash-001",  # Updated model name
-                generation_config={
-                    "temperature": 0.1,
-                }
-            )
+            print("\n🤖 Invoking agent...")
+            response = self.agent.invoke({"input": prompt})
+            print(f"\n📝 Raw agent response: {response}")
             
-            # Generate structured response
-            response = model.generate_content(
-                contents=prompt,
-                generation_config={
-                    "response_mime_type": "application/json",
-                    "response_schema": response_schema
-                }
-            )
+            if not response:
+                print("❌ No response from agent")
+                return "[]"
             
-            # Get the structured output
-            structured_output = response.text
-            print(f"📋 Structured output: {structured_output[:200]}...")
-
-            # Process each media suggestion
-            media_items = json.loads(structured_output)
-            processed_items = []
+            output_text = response.get("output", "")
+            print(f"\n🔍 Parsing output: {output_text[:200]}...")  # First 200 chars
             
-            for item in media_items:
-                if item["mediaType"] == "image":
-                    # Generate image using existing method
-                    image_url = self.img_client.generate_image(item["description"])
-                    if "wp-content/uploads" in image_url:
-                        item["mediaUrl"] = image_url
-                        processed_items.append(item)
-                elif item["mediaType"] == "video":
-                    # Get video using existing method
-                    video_url = self.img_client.getYouTubeVideo(item["description"])
-                    if "youtube.com" in video_url:
-                        item["mediaUrl"] = video_url
-                        processed_items.append(item)
-
-            return json.dumps(processed_items, indent=2)
+            try:
+                # Validate the JSON format
+                return self.now_response(output_text)
+                
+            except json.JSONDecodeError as e:
+                print(f"\n❌ JSON parsing error: {str(e)}")
+                print(f"Problematic text: {output_text}")
+                return "[]"
             
         except Exception as e:
             print(f"\n❌ Error in enhance_post: {str(e)}")
+            return "[]"
+
+    def validate_json_response(self, agent_output: str) -> str:
+        """Validates the JSON format and filters out hallucinations using StrictJSON principles"""
+        try:
+            print(f"\n🔍 Raw agent output (first 200 chars): {agent_output[:200]}...")
+            
+            # First try to extract JSON from markdown code blocks if present
+            cleaned_output = agent_output
+            if "```json" in agent_output or "````json" in agent_output:
+                print(f"🔍 Detected JSON in code block format")
+                # Replace four backticks with three for consistency
+                cleaned_output = cleaned_output.replace("````json", "```json")
+                # Extract content between ```json and ``` markers
+                json_match = re.search(r'```json\s*([\s\S]*?)\s*```', cleaned_output)
+                if json_match:
+                    cleaned_output = json_match.group(1).strip()
+                    print(f"✅ Successfully extracted JSON from code block")
+            
+            # StrictJSON-inspired approach: Try multiple parsing strategies
+            try:
+                # Direct parsing
+                media_items = json.loads(cleaned_output)
+            except json.JSONDecodeError:
+                print("⚠️ Initial JSON parsing failed, trying alternative approaches")
+                
+                # Try to clean the string further
+                # Remove any remaining backticks and extra whitespace
+                cleaned_output = cleaned_output.strip('`').strip()
+                
+                try:
+                    # Try parsing again after cleaning
+                    media_items = json.loads(cleaned_output)
+                except json.JSONDecodeError:
+                    # Try to extract a JSON array using regex as a last resort
+                    import re
+                    json_array_match = re.search(r'\[\s*{.*}\s*\]', cleaned_output, re.DOTALL)
+                    if json_array_match:
+                        json_str = json_array_match.group(0)
+                        try:
+                            media_items = json.loads(json_str)
+                        except json.JSONDecodeError:
+                            print("❌ All JSON parsing attempts failed")
+                            return "[]"
+                    else:
+                        print("❌ Could not find valid JSON structure")
+                        return "[]"
+            
+            print(f"✅ Successfully parsed JSON with {len(media_items)} items")
+            
+            # Convert mediaType to type and mediaUrl to appropriate field based on type
+            converted_items = []
+            for item in media_items:
+                if "mediaType" not in item or "mediaUrl" not in item:
+                    print(f"❌ Skipping item without mediaType or mediaUrl: {item}")
+                    continue
+                    
+                new_item = {"type": item["mediaType"]}
+                
+                # Copy other fields
+                for key, value in item.items():
+                    if key not in ["mediaType", "mediaUrl"]:
+                        new_item[key] = value
+                
+                # Handle specific media types
+                if item["mediaType"] == "video" or item["mediaType"] == "youtube":
+                    new_item["type"] = "youtube"
+                    # Extract video ID from YouTube URL
+                    youtube_url = item["mediaUrl"]
+                    video_id = None
+                    
+                    if "youtube.com/watch?v=" in youtube_url:
+                        video_id = youtube_url.split("youtube.com/watch?v=")[1].split("&")[0]
+                    elif "youtu.be/" in youtube_url:
+                        video_id = youtube_url.split("youtu.be/")[1].split("?")[0]
+                    
+                    if video_id:
+                        new_item["videoId"] = video_id
+                    else:
+                        print(f"❌ Could not extract videoId from URL: {youtube_url}")
+                        continue
+                        
+                elif item["mediaType"] == "image":
+                    new_item["prompt"] = item.get("description", "An image related to the content")
+                    new_item["url"] = item["mediaUrl"]
+                
+                converted_items.append(new_item)
+            
+            print(f"✅ Converted to {len(converted_items)} valid items")
+            return json.dumps(converted_items, indent=2)
+            
+        except Exception as e:
+            print(f"❌ Error validating JSON: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return "[]"
 
     def populate_media_in_html(self, html_content: str, base_url: str = None) -> str:
@@ -397,132 +449,144 @@ class PostWriterV2:
             for i, placement in enumerate(media_placements, 1):
                 print(f"\n🖼️ Processing placement {i}:")
                 
-                # Normalize the insert point by removing extra spaces and standardizing line endings
-                insert_before = placement['insertBefore'].strip()
-                # Convert multiple spaces to single space
-                insert_before = ' '.join(insert_before.split())
+                insert_before = placement['insertBefore']
                 media_type = placement['mediaType']
-                
                 print(f"  Type: {media_type}")
-                print(f"  Original Insert Before: {insert_before[:50]}...")
+                print(f"  Insert Before: {insert_before[:50]}...")
                 
-                # Find the actual text in the content
-                normalized_content = ' '.join(html_content.split())
-                start_pos = normalized_content.find(insert_before)
+                if media_type == 'image':
+                    wordpress_url = placement['mediaUrl']
+                    media_html = f'<img src="{wordpress_url}" alt="{placement.get("description", "")}" />'
+                    print(f"  📸 Created image HTML with URL: {wordpress_url}")
+                else:  # video
+                    video_id = placement['mediaUrl'].split('watch?v=')[-1]
+                    media_html = f'<iframe style="aspect-ratio: 16 / 9; width: 100%" src="https://www.youtube.com/embed/{video_id}" title="{placement.get("description", "")}" frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen></iframe>'
+                    print(f"  🎥 Created video HTML with ID: {video_id}")
                 
-                if start_pos == -1:
-                    print("  ⚠️ Exact match not found, trying to find the paragraph...")
-                    # Try to find the paragraph by its first few words
-                    words = insert_before.split()[:8]  # First 8 words should be unique enough
-                    search_text = ' '.join(words)
-                    start_pos = normalized_content.find(search_text)
-                
-                if start_pos != -1:
-                    # Create the media HTML
-                    if media_type == 'image':
-                        wordpress_url = placement['mediaUrl']
-                        media_html = f'<img src="{wordpress_url}" alt="{placement.get("description", "")}" />'
-                    else:  # video
-                        video_id = placement['mediaUrl'].split('watch?v=')[-1]
-                        media_html = f'<iframe style="aspect-ratio: 16 / 9; width: 100%" src="https://www.youtube.com/embed/{video_id}" title="{placement.get("description", "")}" frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen></iframe>'
-                    
-                    # Find the actual text in the original content that matches our normalized position
-                    actual_text = html_content[start_pos:start_pos + len(insert_before)]
-                    print(f"  Found matching text: {actual_text[:50]}...")
-                    
-                    # Insert the media before the paragraph
-                    html_content = html_content.replace(
-                        actual_text,
-                        f"\n{media_html}\n\n{actual_text}"
-                    )
-                    print("  ✅ Media inserted successfully")
-                else:
-                    print("  ❌ Could not find insertion point")
+                # Insert the media HTML
+                html_content = html_content.replace(
+                    insert_before, 
+                    f"{media_html}\n{insert_before}"
+                )
+                print("  ✅ Media inserted successfully")
             
             return html_content
             
         except Exception as e:
             print(f"Error in media population: {str(e)}")
             return html_content
+
+def list_available_models():
+    """List all available Gemini models"""
+    print("Listing available models...")
+    try:
+        import google.generativeai as genai
+        from dotenv import load_dotenv
+        import os
+        
+        load_dotenv()
+        genai.configure(api_key=os.getenv('GOOGLE_API_KEY'))
+        
+        models = genai.list_models()
+        print("Available models:")
+        
+        model_count = 0
+        for model in models:
+            model_count += 1
+            print(f"- Name: {model.name}")
+            print(f"  Display name: {model.display_name}")
+            print(f"  Supported methods: {model.supported_generation_methods}")
+            print("-" * 50)
+        
+        print(f"Total models found: {model_count}")
+            
+    except Exception as e:
+        print(f"Error listing models: {str(e)}")
+        import traceback
+        traceback.print_exc()
+
 def main():
-   post_writer = PostWriterV2(base_url="https://ruckquest.com")
-   sample_post = """<h1>How to Start Rucking: A Comprehensive Guide</h1>
+    print("Starting main function...")
+    list_available_models()
+    
+    post_writer = PostWriterV2(base_url="https://ruckquest.com")
+    sample_post = """<h1>How to Start Rucking: A Comprehensive Guide</h1>
 
 
-<h2>What is Rucking?</h2>
+    <h2>What is Rucking?</h2>
 
 
-<p>Rucking is simply <strong>walking with weight on your back</strong>.  It's a low-impact, full-body workout that combines cardiovascular exercise with strength training.  Unlike running, rucking is gentler on your joints, making it accessible to a wider range of fitness levels.  The added weight challenges your muscles, improving strength and endurance.  It's a versatile activity that can be done virtually anywhere – from city streets to hiking trails.</p>
+    <p>Rucking is simply <strong>walking with weight on your back</strong>.  It's a low-impact, full-body workout that combines cardiovascular exercise with strength training.  Unlike running, rucking is gentler on your joints, making it accessible to a wider range of fitness levels.  The added weight challenges your muscles, improving strength and endurance.  It's a versatile activity that can be done virtually anywhere – from city streets to hiking trails.</p>
 
 
-<h2>Why Start Rucking?</h2>
+    <h2>Why Start Rucking?</h2>
 
 
-<p>Rucking offers a multitude of benefits, making it a popular choice for fitness enthusiasts and those seeking a unique workout experience:</p>
+    <p>Rucking offers a multitude of benefits, making it a popular choice for fitness enthusiasts and those seeking a unique workout experience:</p>
 
 
-<ul>
- <li><strong>Improved Cardiovascular Health:</strong> Rucking elevates your heart rate, improving cardiovascular fitness and reducing the risk of heart disease.</li>
- <li><strong>Increased Strength and Endurance:</strong> The added weight strengthens your legs, core, and back muscles, building both strength and endurance.</li>
- <li><strong>Calorie Burning:</strong> Rucking burns significantly more calories than regular walking, aiding in weight loss and management.</li>
- <li><strong>Enhanced Mental Well-being:</strong>  The outdoor nature of rucking and the potential for social interaction contribute to improved mental health and stress reduction.</li>
- <li><strong>Low Impact Exercise:</strong>  Unlike high-impact activities like running, rucking is easier on your joints, reducing the risk of injury.</li>
- <li><strong>Improved Posture:</strong>  The weight on your back encourages better posture and core engagement.</li>
-</ul>
+    <ul>
+     <li><strong>Improved Cardiovascular Health:</strong> Rucking elevates your heart rate, improving cardiovascular fitness and reducing the risk of heart disease.</li>
+     <li><strong>Increased Strength and Endurance:</strong> The added weight strengthens your legs, core, and back muscles, building both strength and endurance.</li>
+     <li><strong>Calorie Burning:</strong> Rucking burns significantly more calories than regular walking, aiding in weight loss and management.</li>
+     <li><strong>Enhanced Mental Well-being:</strong>  The outdoor nature of rucking and the potential for social interaction contribute to improved mental health and stress reduction.</li>
+     <li><strong>Low Impact Exercise:</strong>  Unlike high-impact activities like running, rucking is easier on your joints, reducing the risk of injury.</li>
+     <li><strong>Improved Posture:</strong>  The weight on your back encourages better posture and core engagement.</li>
+    </ul>
 
 
 
 
-<h2>Getting Started: Your First Ruck</h2>
+    <h2>Getting Started: Your First Ruck</h2>
 
 
-<h3>1. Choose Your Gear:</h3>
+    <h3>1. Choose Your Gear:</h3>
 
 
-<ul>
- <li><strong>Ruckpack:</strong> Invest in a comfortable and durable ruckpack designed for carrying weight.  Avoid using a flimsy backpack; a dedicated ruckpack provides better weight distribution and support.</li>
- <li><strong>Weight:</strong> Start with a manageable weight, such as 10-25 pounds.  You can use readily available weights like dumbbells wrapped in a towel, or specialized ruck plates. Gradually increase the weight as you get stronger.  Never exceed 1/3 of your body weight.</li>
- <li><strong>Footwear:</strong> Wear comfortable and supportive shoes or boots suitable for walking or hiking.  Good traction is essential, especially on uneven terrain.</li>
- <li><strong>Clothing:</strong> Wear moisture-wicking clothing appropriate for the weather conditions.  Layers are recommended to adjust to changing temperatures.</li>
-</ul>
+    <ul>
+     <li><strong>Ruckpack:</strong> Invest in a comfortable and durable ruckpack designed for carrying weight.  Avoid using a flimsy backpack; a dedicated ruckpack provides better weight distribution and support.</li>
+     <li><strong>Weight:</strong> Start with a manageable weight, such as 10-25 pounds.  You can use readily available weights like dumbbells wrapped in a towel, or specialized ruck plates. Gradually increase the weight as you get stronger.  Never exceed 1/3 of your body weight.</li>
+     <li><strong>Footwear:</strong> Wear comfortable and supportive shoes or boots suitable for walking or hiking.  Good traction is essential, especially on uneven terrain.</li>
+     <li><strong>Clothing:</strong> Wear moisture-wicking clothing appropriate for the weather conditions.  Layers are recommended to adjust to changing temperatures.</li>
+    </ul>
 
 
-<h3>2. Plan Your Route:</h3>
+    <h3>2. Plan Your Route:</h3>
 
 
-<p>Begin with short distances, such as 1-2 miles, on relatively flat terrain.  As you gain experience, you can gradually increase the distance and challenge yourself with more varied routes.</p>
+    <p>Begin with short distances, such as 1-2 miles, on relatively flat terrain.  As you gain experience, you can gradually increase the distance and challenge yourself with more varied routes.</p>
 
 
-<h3>3. Warm-up and Cool-down:</h3>
+    <h3>3. Warm-up and Cool-down:</h3>
 
 
-<p>Always warm up before starting your ruck with light cardio, such as a brisk walk or some dynamic stretches.  Cool down afterward with static stretches to improve flexibility and reduce muscle soreness.</p>
+    <p>Always warm up before starting your ruck with light cardio, such as a brisk walk or some dynamic stretches.  Cool down afterward with static stretches to improve flexibility and reduce muscle soreness.</p>
 
 
-<h3>4. Pace Yourself:</h3>
+    <h3>4. Pace Yourself:</h3>
 
 
-<p>Maintain a comfortable pace.  Aim for a pace of 15-20 minutes per mile initially.  If you find yourself moving slower than 20 minutes per mile, reduce the weight.  Listen to your body and take breaks when needed.</p>
+    <p>Maintain a comfortable pace.  Aim for a pace of 15-20 minutes per mile initially.  If you find yourself moving slower than 20 minutes per mile, reduce the weight.  Listen to your body and take breaks when needed.</p>
 
 
-<h3>5. Stay Hydrated:</h3>
+    <h3>5. Stay Hydrated:</h3>
 
 
-<p>Carry water with you, especially during longer rucks.  Dehydration can significantly impact your performance and well-being.</p>
+    <p>Carry water with you, especially during longer rucks.  Dehydration can significantly impact your performance and well-being.</p>
 
 
-<h3>6. Gradual Progression:</h3>
+    <h3>6. Gradual Progression:</h3>
 
 
-<p>Start with 1-2 rucking sessions per week.  Gradually increase the frequency, duration, distance, and weight as your fitness improves.  Avoid increasing any of these factors by more than 10% per week.</p>
-"""
+    <p>Start with 1-2 rucking sessions per week.  Gradually increase the frequency, duration, distance, and weight as your fitness improves.  Avoid increasing any of these factors by more than 10% per week.</p>
+    """
 
 
-   enhanced_post = post_writer.populate_media_in_html(
-       sample_post
-   )
-   print(f"Enhanced Post: {enhanced_post}")
+    enhanced_post = post_writer.populate_media_in_html(
+        sample_post
+    )
+    print(f"Enhanced Post: {enhanced_post}")
 
 
 if __name__ == "__main__":
-   main()
+    main()

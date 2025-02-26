@@ -397,47 +397,49 @@ class PostWriterV2:
             for i, placement in enumerate(media_placements, 1):
                 print(f"\n🖼️ Processing placement {i}:")
                 
-                # Normalize the insert point by removing extra spaces and standardizing line endings
-                insert_before = placement['insertBefore'].strip()
-                # Convert multiple spaces to single space
-                insert_before = ' '.join(insert_before.split())
+                insert_before = placement['insertBefore']
                 media_type = placement['mediaType']
-                
                 print(f"  Type: {media_type}")
-                print(f"  Original Insert Before: {insert_before[:50]}...")
+                print(f"  Insert Before: {insert_before[:50]}...")
                 
-                # Find the actual text in the content
-                normalized_content = ' '.join(html_content.split())
-                start_pos = normalized_content.find(insert_before)
+                # Debug: Check if text exists in content
+                print(f"  Text exists in content: {insert_before in html_content}")
+                print(f"  Content length before: {len(html_content)}")
                 
-                if start_pos == -1:
-                    print("  ⚠️ Exact match not found, trying to find the paragraph...")
-                    # Try to find the paragraph by its first few words
-                    words = insert_before.split()[:8]  # First 8 words should be unique enough
-                    search_text = ' '.join(words)
-                    start_pos = normalized_content.find(search_text)
+                # Debug: Print exact characters we're looking for
+                print(f"  Looking for text (repr): {repr(insert_before)}")
+                # Find the position where we expect the match
+                pos = html_content.find(insert_before[:50])
+                if pos != -1:
+                    context = html_content[pos-20:pos+70]
+                    print(f"  Context around match point (repr): {repr(context)}")
                 
-                if start_pos != -1:
-                    # Create the media HTML
-                    if media_type == 'image':
-                        wordpress_url = placement['mediaUrl']
-                        media_html = f'<img src="{wordpress_url}" alt="{placement.get("description", "")}" />'
-                    else:  # video
-                        video_id = placement['mediaUrl'].split('watch?v=')[-1]
-                        media_html = f'<iframe style="aspect-ratio: 16 / 9; width: 100%" src="https://www.youtube.com/embed/{video_id}" title="{placement.get("description", "")}" frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen></iframe>'
-                    
-                    # Find the actual text in the original content that matches our normalized position
-                    actual_text = html_content[start_pos:start_pos + len(insert_before)]
-                    print(f"  Found matching text: {actual_text[:50]}...")
-                    
-                    # Insert the media before the paragraph
-                    html_content = html_content.replace(
-                        actual_text,
-                        f"\n{media_html}\n\n{actual_text}"
-                    )
-                    print("  ✅ Media inserted successfully")
+                if media_type == 'image':
+                    wordpress_url = placement['mediaUrl']
+                    media_html = f'<img src="{wordpress_url}" alt="{placement.get("description", "")}" />'
+                    print(f"  �� Created image HTML: {media_html}")
+                else:  # video
+                    video_id = placement['mediaUrl'].split('watch?v=')[-1]
+                    media_html = f'<iframe style="aspect-ratio: 16 / 9; width: 100%" src="https://www.youtube.com/embed/{video_id}" title="{placement.get("description", "")}" frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen></iframe>'
+                    print(f"  �� Created video HTML: {media_html}")
+                
+                # Store content before replacement
+                content_before = html_content
+                
+                # Do the replacement
+                html_content = html_content.replace(
+                    insert_before, 
+                    f"{media_html}\n{insert_before}"
+                )
+                
+                # Debug: Check if replacement worked
+                print(f"  Content length after: {len(html_content)}")
+                print(f"  Content changed: {content_before != html_content}")
+                
+                if content_before == html_content:
+                    print("  ⚠️ Warning: Content unchanged after replacement!")
                 else:
-                    print("  ❌ Could not find insertion point")
+                    print("  ✅ Media inserted successfully")
             
             return html_content
             

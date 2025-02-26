@@ -24,7 +24,7 @@ class GetImgAIClient:
         
         # Initialize Gemini for prompt enhancement
         self.llm = ChatGoogleGenerativeAI(
-            model="models/gemini-2.0-flash-thinking-exp-01-21",
+            model="gemini-pro",
             temperature=0.7,
             google_api_key=os.getenv('GOOGLE_API_KEY')
         )
@@ -177,7 +177,7 @@ class PostWriterV2:
         
         # Initialize the LLM with Gemini configuration
         self.llm = ChatGoogleGenerativeAI(
-            model="models/gemini-2.0-flash-thinking-exp-01-21",
+            model="gemini-pro",
             temperature=0.7,
             max_output_tokens=2048,
             google_api_key=os.getenv('GOOGLE_API_KEY')
@@ -239,24 +239,6 @@ class PostWriterV2:
                 truncated_post = blog_post
                 print("Post shorter than 200 words, using full text")
 
-            # Define the response schema for structured output
-            response_schema = {
-                "type": "ARRAY",
-                "items": {
-                    "type": "OBJECT",
-                    "properties": {
-                        "insertBefore": {"type": "STRING"},
-                        "mediaType": {
-                            "type": "STRING",
-                            "enum": ["image", "video"]
-                        },
-                        "mediaUrl": {"type": "STRING"},
-                        "description": {"type": "STRING"}
-                    },
-                    "required": ["insertBefore", "mediaType", "mediaUrl", "description"]
-                }
-            }
-
             # Create the prompt for the agent with clearer instructions
             prompt = f"""
             {self.system_message}
@@ -317,59 +299,81 @@ class PostWriterV2:
             ]
 
             IMPORTANT RULES FOR FINAL OUTPUT:
-            1. For images, the mediaUrl must be the URL returned by GenerateImage
-            2. For videos, the mediaUrl must be the YouTube URL returned by GetYouTubeVideo
-            3. The "insertBefore" value must be an EXACT copy-paste from the blog post. Include all HTML tags exactly as they appear (<p>, </p>, etc. Include all whitespace and line breaks exactly
-            6. Do NOT include any explanatory text, code blocks, or backticks
-            7. Return ONLY the JSON array
+            2. For images, the mediaUrl must be the URL returned by GenerateImage
+            3. For videos, the mediaUrl must be the YouTube URL returned by GetYouTubeVideo
+            4. Do NOT include any explanatory text, code blocks, or backticks
+            5. Return ONLY the JSON array
             """
+            
+            print("\n🤖 Invoking agent...")
+            response = self.agent.invoke({"input": prompt})
+            print(f"\n📝 Raw agent response: {response}")
+            
+            if not response:
+                print("❌ No response from agent")
+                return "[]"
+            
+            output_text = response.get("output", "")
+            print(f"\n🔍 Parsing output: {output_text[:200]}...")  # First 200 chars
+            
+            try:
+                # Validate the JSON format
+                return self.validate_json_response(output_text)
+                
+            except json.JSONDecodeError as e:
+                print(f"\n❌ JSON parsing error: {str(e)}")
+                print(f"Problematic text: {output_text}")
+                return "[]"
+            
+        except Exception as e:
+            print(f"\n❌ Error in enhance_post: {str(e)}")
+            return "[]"
 
+    def validate_json_response(self, agent_output: str) -> str:
+        """Validates the JSON format using Gemini's structured output capabilities"""
+        try:
+            print(f"\n🔍 Raw agent output (first 200 chars): {agent_output[:200]}...")
+            
             # Configure genai with API key
-            genai.configure(api_key=os.getenv('GOOGLE_API_KEY'))
+            genai.configure(api_key=self.GOOGLE_API_KEY)
+            
+            # Define the schema
+            schema = {
+                "type": "ARRAY",
+                "items": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "insertBefore": {"type": "STRING"},
+                        "mediaType": {"type": "STRING", "enum": ["image", "video"]},
+                        "mediaUrl": {"type": "STRING"},
+                        "description": {"type": "STRING"}
+                    },
+                    "required": ["insertBefore", "mediaType", "mediaUrl", "description"],
+                    "propertyOrdering": ["insertBefore", "mediaType", "mediaUrl", "description"]
+                }
+            }
             
             # Create the model with structured output configuration
             model = genai.GenerativeModel(
-                model_name="gemini-2.0-flash-001",  # Updated model name
+                model_name="gemini-pro",
                 generation_config={
-                    "temperature": 0.1,
+                    "temperature": 0.1
                 }
             )
             
             # Generate structured response
             response = model.generate_content(
-                contents=prompt,
+                contents=agent_output,
                 generation_config={
                     "response_mime_type": "application/json",
-                    "response_schema": response_schema
+                    "response_schema": schema
                 }
             )
             
-            # Get the structured output
-            structured_output = response.text
-            print(f"📋 Structured output: {structured_output[:200]}...")
-
-            # Process each media suggestion
-            media_items = json.loads(structured_output)
-            processed_items = []
-            
-            for item in media_items:
-                if item["mediaType"] == "image":
-                    # Generate image using existing method
-                    image_url = self.img_client.generate_image(item["description"])
-                    if "wp-content/uploads" in image_url:
-                        item["mediaUrl"] = image_url
-                        processed_items.append(item)
-                elif item["mediaType"] == "video":
-                    # Get video using existing method
-                    video_url = self.img_client.getYouTubeVideo(item["description"])
-                    if "youtube.com" in video_url:
-                        item["mediaUrl"] = video_url
-                        processed_items.append(item)
-
-            return json.dumps(processed_items, indent=2)
+            return response.text
             
         except Exception as e:
-            print(f"\n❌ Error in enhance_post: {str(e)}")
+            print(f"❌ Error validating JSON: {str(e)}")
             return "[]"
 
     def populate_media_in_html(self, html_content: str, base_url: str = None) -> str:
@@ -397,47 +401,26 @@ class PostWriterV2:
             for i, placement in enumerate(media_placements, 1):
                 print(f"\n🖼️ Processing placement {i}:")
                 
-                # Normalize the insert point by removing extra spaces and standardizing line endings
-                insert_before = placement['insertBefore'].strip()
-                # Convert multiple spaces to single space
-                insert_before = ' '.join(insert_before.split())
+                insert_before = placement['insertBefore']
                 media_type = placement['mediaType']
-                
                 print(f"  Type: {media_type}")
-                print(f"  Original Insert Before: {insert_before[:50]}...")
+                print(f"  Insert Before: {insert_before[:50]}...")
                 
-                # Find the actual text in the content
-                normalized_content = ' '.join(html_content.split())
-                start_pos = normalized_content.find(insert_before)
+                if media_type == 'image':
+                    wordpress_url = placement['mediaUrl']
+                    media_html = f'<img src="{wordpress_url}" alt="{placement.get("description", "")}" />'
+                    print(f"  📸 Created image HTML with URL: {wordpress_url}")
+                else:  # video
+                    video_id = placement['mediaUrl'].split('watch?v=')[-1]
+                    media_html = f'<iframe style="aspect-ratio: 16 / 9; width: 100%" src="https://www.youtube.com/embed/{video_id}" title="{placement.get("description", "")}" frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen></iframe>'
+                    print(f"  🎥 Created video HTML with ID: {video_id}")
                 
-                if start_pos == -1:
-                    print("  ⚠️ Exact match not found, trying to find the paragraph...")
-                    # Try to find the paragraph by its first few words
-                    words = insert_before.split()[:8]  # First 8 words should be unique enough
-                    search_text = ' '.join(words)
-                    start_pos = normalized_content.find(search_text)
-                
-                if start_pos != -1:
-                    # Create the media HTML
-                    if media_type == 'image':
-                        wordpress_url = placement['mediaUrl']
-                        media_html = f'<img src="{wordpress_url}" alt="{placement.get("description", "")}" />'
-                    else:  # video
-                        video_id = placement['mediaUrl'].split('watch?v=')[-1]
-                        media_html = f'<iframe style="aspect-ratio: 16 / 9; width: 100%" src="https://www.youtube.com/embed/{video_id}" title="{placement.get("description", "")}" frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen></iframe>'
-                    
-                    # Find the actual text in the original content that matches our normalized position
-                    actual_text = html_content[start_pos:start_pos + len(insert_before)]
-                    print(f"  Found matching text: {actual_text[:50]}...")
-                    
-                    # Insert the media before the paragraph
-                    html_content = html_content.replace(
-                        actual_text,
-                        f"\n{media_html}\n\n{actual_text}"
-                    )
-                    print("  ✅ Media inserted successfully")
-                else:
-                    print("  ❌ Could not find insertion point")
+                # Insert the media HTML
+                html_content = html_content.replace(
+                    insert_before, 
+                    f"{media_html}\n{insert_before}"
+                )
+                print("  ✅ Media inserted successfully")
             
             return html_content
             

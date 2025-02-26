@@ -5,7 +5,6 @@ from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.tools import Tool
 from langchain.agents import initialize_agent, AgentType
-import google.generativeai as genai
 from typing import Dict, List
 import json
 import requests
@@ -24,7 +23,7 @@ class GetImgAIClient:
         
         # Initialize Gemini for prompt enhancement
         self.llm = ChatGoogleGenerativeAI(
-            model="models/gemini-2.0-flash-thinking-exp-01-21",
+            model="gemini-pro",
             temperature=0.7,
             google_api_key=os.getenv('GOOGLE_API_KEY')
         )
@@ -177,7 +176,7 @@ class PostWriterV2:
         
         # Initialize the LLM with Gemini configuration
         self.llm = ChatGoogleGenerativeAI(
-            model="models/gemini-2.0-flash-thinking-exp-01-21",
+            model="gemini-pro",
             temperature=0.7,
             max_output_tokens=2048,
             google_api_key=os.getenv('GOOGLE_API_KEY')
@@ -239,24 +238,6 @@ class PostWriterV2:
                 truncated_post = blog_post
                 print("Post shorter than 200 words, using full text")
 
-            # Define the response schema for structured output
-            response_schema = {
-                "type": "ARRAY",
-                "items": {
-                    "type": "OBJECT",
-                    "properties": {
-                        "insertBefore": {"type": "STRING"},
-                        "mediaType": {
-                            "type": "STRING",
-                            "enum": ["image", "video"]
-                        },
-                        "mediaUrl": {"type": "STRING"},
-                        "description": {"type": "STRING"}
-                    },
-                    "required": ["insertBefore", "mediaType", "mediaUrl", "description"]
-                }
-            }
-
             # Create the prompt for the agent with clearer instructions
             prompt = f"""
             {self.system_message}
@@ -317,60 +298,117 @@ class PostWriterV2:
             ]
 
             IMPORTANT RULES FOR FINAL OUTPUT:
-            1. For images, the mediaUrl must be the URL returned by GenerateImage
-            2. For videos, the mediaUrl must be the YouTube URL returned by GetYouTubeVideo
-            3. The "insertBefore" value must be an EXACT copy-paste from the blog post. Include all HTML tags exactly as they appear (<p>, </p>, etc. Include all whitespace and line breaks exactly
-            6. Do NOT include any explanatory text, code blocks, or backticks
-            7. Return ONLY the JSON array
+            2. For images, the mediaUrl must be the URL returned by GenerateImage
+            3. For videos, the mediaUrl must be the YouTube URL returned by GetYouTubeVideo
+            4. Do NOT include any explanatory text, code blocks, or backticks
+            5. Return ONLY the JSON array
             """
-
-            # Configure genai with API key
-            genai.configure(api_key=os.getenv('GOOGLE_API_KEY'))
             
-            # Create the model with structured output configuration
-            model = genai.GenerativeModel(
-                model_name="gemini-2.0-flash-001",  # Updated model name
-                generation_config={
-                    "temperature": 0.1,
-                }
-            )
+            print("\n🤖 Invoking agent...")
+            response = self.agent.invoke({"input": prompt})
+            print(f"\n📝 Raw agent response: {response}")
             
-            # Generate structured response
-            response = model.generate_content(
-                contents=prompt,
-                generation_config={
-                    "response_mime_type": "application/json",
-                    "response_schema": response_schema
-                }
-            )
+            if not response:
+                print("❌ No response from agent")
+                return "[]"
             
-            # Get the structured output
-            structured_output = response.text
-            print(f"📋 Structured output: {structured_output[:200]}...")
-
-            # Process each media suggestion
-            media_items = json.loads(structured_output)
-            processed_items = []
+            output_text = response.get("output", "")
+            print(f"\n🔍 Parsing output: {output_text[:200]}...")  # First 200 chars
             
-            for item in media_items:
-                if item["mediaType"] == "image":
-                    # Generate image using existing method
-                    image_url = self.img_client.generate_image(item["description"])
-                    if "wp-content/uploads" in image_url:
-                        item["mediaUrl"] = image_url
-                        processed_items.append(item)
-                elif item["mediaType"] == "video":
-                    # Get video using existing method
-                    video_url = self.img_client.getYouTubeVideo(item["description"])
-                    if "youtube.com" in video_url:
-                        item["mediaUrl"] = video_url
-                        processed_items.append(item)
-
-            return json.dumps(processed_items, indent=2)
+            try:
+                # Validate the JSON format
+                return self.validate_json_response(output_text)
+                
+            except json.JSONDecodeError as e:
+                print(f"\n❌ JSON parsing error: {str(e)}")
+                print(f"Problematic text: {output_text}")
+                return "[]"
             
         except Exception as e:
             print(f"\n❌ Error in enhance_post: {str(e)}")
             return "[]"
+    def validate_json_response(self, agent_output: str) -> str:
+        """Validates the JSON format and filters out hallucinations"""
+        try:
+            print(f"\n🔍 Raw agent output (first 200 chars): {agent_output[:200]}...")
+            
+            # Clean up the output to extract just the JSON array
+            cleaned_output = agent_output.strip()
+            
+            # Remove any markdown code blocks
+            cleaned_output = re.sub(r'```+\s*json\s*', '', cleaned_output)
+            cleaned_output = re.sub(r'```+', '', cleaned_output)
+            cleaned_output = cleaned_output.strip('`').strip()
+            
+            # Try to find a JSON array in the text
+            # Look for array pattern starting with [ and ending with ]
+            json_array_match = re.search(r'\[\s*{.*}\s*\]', cleaned_output, re.DOTALL)
+            if json_array_match:
+                json_str = json_array_match.group(0)
+                print(f"📋 Found JSON array: {json_str[:100]}...")
+            else:
+                # If no array found, try to find individual JSON objects and combine them
+                json_objects = re.findall(r'{[^{}]*"insertBefore"[^{}]*"mediaType"[^{}]*"mediaUrl"[^{}]*"description"[^{}]*}', cleaned_output, re.DOTALL)
+                if json_objects:
+                    json_str = "[" + ",".join(json_objects) + "]"
+                    print(f"🔄 Constructed JSON array from {len(json_objects)} objects")
+                else:
+                    print("❌ No valid JSON pattern found")
+                    return "[]"
+            
+            # Try to parse the JSON
+            try:
+                media_items = json.loads(json_str)
+                print(f"✅ Successfully parsed JSON with {len(media_items)} items")
+            except json.JSONDecodeError as e:
+                print(f"❌ JSON parsing error: {str(e)}")
+                
+                # Last resort: try to manually fix common JSON issues
+                fixed_json = json_str.replace("'", '"')  # Replace single quotes with double quotes
+                fixed_json = re.sub(r',\s*}', '}', fixed_json)  # Remove trailing commas
+                fixed_json = re.sub(r',\s*]', ']', fixed_json)  # Remove trailing commas in arrays
+                
+                try:
+                    media_items = json.loads(fixed_json)
+                    print("✅ Successfully parsed JSON after fixes")
+                except json.JSONDecodeError:
+                    print("❌ Could not parse JSON even after fixes")
+                    return "[]"
+            
+            # Validate each media item
+            valid_media = []
+            for item in media_items:
+                # Check required fields
+                if not all(key in item for key in ["insertBefore", "mediaType", "mediaUrl", "description"]):
+                    print("❌ Missing required fields in media item")
+                    continue
+                
+                media_url = item["mediaUrl"]
+                media_type = item["mediaType"]
+                
+                # Validate based on media type
+                is_valid = False
+                if media_type == "image":
+                    # For images: WordPress URL 
+                    is_valid = "wp-content/uploads" in media_url
+                elif media_type == "video":
+                    # For videos: must be YouTube URL
+                    is_valid = "youtube.com" in media_url
+                
+                if is_valid:
+                    valid_media.append(item)
+                    print(f"✅ Valid media: {media_type} - {media_url[:50]}...")
+                else:
+                    print(f"❌ Invalid media URL: {media_url[:50]}...")
+            
+            return json.dumps(valid_media, indent=2)
+            
+        except Exception as e:
+            print(f"❌ Error validating JSON: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return "[]"
+
 
     def populate_media_in_html(self, html_content: str, base_url: str = None) -> str:
         """
@@ -397,54 +435,37 @@ class PostWriterV2:
             for i, placement in enumerate(media_placements, 1):
                 print(f"\n🖼️ Processing placement {i}:")
                 
-                # Normalize the insert point by removing extra spaces and standardizing line endings
-                insert_before = placement['insertBefore'].strip()
-                # Convert multiple spaces to single space
-                insert_before = ' '.join(insert_before.split())
+                insert_before = placement['insertBefore']
                 media_type = placement['mediaType']
-                
                 print(f"  Type: {media_type}")
-                print(f"  Original Insert Before: {insert_before[:50]}...")
+                print(f"  Insert Before: {insert_before[:50]}...")
                 
-                # Find the actual text in the content
-                normalized_content = ' '.join(html_content.split())
-                start_pos = normalized_content.find(insert_before)
+                if media_type == 'image':
+                    wordpress_url = placement['mediaUrl']
+                    media_html = f'<img src="{wordpress_url}" alt="{placement.get("description", "")}" />'
+                    print(f"  📸 Created image HTML with URL: {wordpress_url}")
+                else:  # video
+                    video_id = placement['mediaUrl'].split('watch?v=')[-1]
+                    media_html = f'<iframe style="aspect-ratio: 16 / 9; width: 100%" src="https://www.youtube.com/embed/{video_id}" title="{placement.get("description", "")}" frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen></iframe>'
+                    print(f"  🎥 Created video HTML with ID: {video_id}")
                 
-                if start_pos == -1:
-                    print("  ⚠️ Exact match not found, trying to find the paragraph...")
-                    # Try to find the paragraph by its first few words
-                    words = insert_before.split()[:8]  # First 8 words should be unique enough
-                    search_text = ' '.join(words)
-                    start_pos = normalized_content.find(search_text)
-                
-                if start_pos != -1:
-                    # Create the media HTML
-                    if media_type == 'image':
-                        wordpress_url = placement['mediaUrl']
-                        media_html = f'<img src="{wordpress_url}" alt="{placement.get("description", "")}" />'
-                    else:  # video
-                        video_id = placement['mediaUrl'].split('watch?v=')[-1]
-                        media_html = f'<iframe style="aspect-ratio: 16 / 9; width: 100%" src="https://www.youtube.com/embed/{video_id}" title="{placement.get("description", "")}" frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen></iframe>'
-                    
-                    # Find the actual text in the original content that matches our normalized position
-                    actual_text = html_content[start_pos:start_pos + len(insert_before)]
-                    print(f"  Found matching text: {actual_text[:50]}...")
-                    
-                    # Insert the media before the paragraph
-                    html_content = html_content.replace(
-                        actual_text,
-                        f"\n{media_html}\n\n{actual_text}"
-                    )
-                    print("  ✅ Media inserted successfully")
-                else:
-                    print("  ❌ Could not find insertion point")
+                # Insert the media HTML
+                html_content = html_content.replace(
+                    insert_before, 
+                    f"{media_html}\n{insert_before}"
+                )
+                print("  ✅ Media inserted successfully")
             
             return html_content
             
         except Exception as e:
             print(f"Error in media population: {str(e)}")
             return html_content
+
+# List available models
+
 def main():
+
    post_writer = PostWriterV2(base_url="https://ruckquest.com")
    sample_post = """<h1>How to Start Rucking: A Comprehensive Guide</h1>
 
