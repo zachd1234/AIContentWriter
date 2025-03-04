@@ -129,68 +129,37 @@ class LinkingAgent:
             if not suggestions:
                 return content
             
-            # Create a list of characters to track which parts are already linked
-            content_chars = list(content)
-            linked_chars = [False] * len(content_chars)
+            # Use regex to replace only the first occurrence of each anchor text
+            modified_content = content
+            added_links = set()  # Track which links we've already added
             
-            # Sort suggestions by position in the content to process from start to end
-            suggestions_with_positions = []
             for suggestion in suggestions:
                 anchor_text = suggestion['anchor_text']
-                # Find all occurrences of the anchor text
-                start_pos = 0
-                while True:
-                    index = content.find(anchor_text, start_pos)
-                    if index == -1:
-                        break
-                    suggestions_with_positions.append((index, suggestion))
-                    start_pos = index + 1
-            
-            # Sort by position (index) in the content
-            suggestions_with_positions.sort()
-            
-            # Process suggestions in order of appearance
-            offset = 0  # Track how much the string has grown due to added HTML
-            
-            for original_index, suggestion in suggestions_with_positions:
-                # Adjust index based on current offset
-                index = original_index + offset
-                anchor_text = suggestion['anchor_text']
                 target_url = suggestion['target_url']
-                anchor_length = len(anchor_text)
                 
-                # Check if any part of this region is already linked
-                region_available = True
-                for i in range(index, min(index + anchor_length, len(linked_chars))):
-                    if linked_chars[i]:
-                        region_available = False
-                        break
+                # Skip if we've already added this link
+                if anchor_text in added_links:
+                    continue
+                    
+                html_link = f'<a href="{target_url}">{anchor_text}</a>'
                 
-                if region_available:
-                    # Replace the anchor text with the linked version
-                    html_link = f'<a href="{target_url}">{anchor_text}</a>'
-                    
-                    # Update the content
-                    content_before = ''.join(content_chars[:index])
-                    content_after = ''.join(content_chars[index + anchor_length:])
-                    new_content = content_before + html_link + content_after
-                    
-                    # Update tracking variables
-                    old_length = len(content_chars)
-                    content_chars = list(new_content)
-                    linked_chars = [False] * len(content_chars)
-                    
-                    # Mark the newly linked region
-                    for i in range(index, index + len(html_link)):
-                        linked_chars[i] = True
-                    
-                    # Update offset
-                    offset += len(html_link) - anchor_length
+                # Check if the anchor text exists as plain text (not already in a link)
+                # Use regex to ensure we're not replacing text that's already in a link
+                pattern = re.compile(f'(?<!<a[^>]*>)({re.escape(anchor_text)})(?![^<]*</a>)')
+                match = pattern.search(modified_content)
+                
+                if match:
+                    # Replace only the first occurrence
+                    modified_content = pattern.sub(html_link, modified_content, count=1)
+                    added_links.add(anchor_text)
+                    print(f"✅ Added link: '{anchor_text}' → {target_url}")
+                else:
+                    print(f"⚠️ Could not find suitable location for: '{anchor_text}'")
             
-            return ''.join(content_chars)
+            return modified_content
             
         except Exception as e:
-            print(f"Error in link processing: {str(e)}")
+            print(f"❌ Error in link processing: {str(e)}")
             return content
 
     def format_link_response(self, agent_output: str) -> list:
