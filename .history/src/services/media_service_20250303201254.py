@@ -245,11 +245,7 @@ class PostWriterV2:
                 "items": {
                     "type": "OBJECT",
                     "properties": {
-                        "locationId": {"type": "INTEGER"},
-                        "position": {
-                            "type": "STRING",
-                            "enum": ["before", "after"]
-                        },
+                        "insertBefore": {"type": "STRING"},
                         "mediaType": {
                             "type": "STRING",
                             "enum": ["image", "video"]
@@ -257,59 +253,39 @@ class PostWriterV2:
                         "mediaUrl": {"type": "STRING"},
                         "description": {"type": "STRING"}
                     },
-                    "required": ["locationId", "position", "mediaType", "mediaUrl", "description"]
+                    "required": ["insertBefore", "mediaType", "mediaUrl", "description"]
                 }
             }
 
-            # Extract all headings and section starts to provide as insertion points
+            # Extract all headings and paragraph starts to provide as insertion points
             import re
-            
-            # Find all headings (h1-h6)
+            # Find all h1-h6 tags and paragraph starts
             heading_pattern = r'<h[1-6][^>]*>(.*?)<\/h[1-6]>'
-            headings = re.findall(heading_pattern, blog_post)
-            
-            # Find all paragraph starts that could be section beginnings
             paragraph_pattern = r'<p[^>]*>(.*?)<\/p>'
+            
+            headings = re.findall(heading_pattern, blog_post)
             paragraphs = re.findall(paragraph_pattern, blog_post)
             
-            # Create a list of potential insertion points with IDs
+            # Get the first 50 chars of each heading and paragraph
             potential_insertion_points = []
-            
-            # Add headings first (they're more likely to be section starts)
             for heading in headings:
                 # Clean HTML tags from heading
                 clean_heading = re.sub(r'<[^>]+>', '', heading)
                 if clean_heading.strip():
-                    potential_insertion_points.append({
-                        "id": len(potential_insertion_points) + 1,
-                        "text": clean_heading.strip(),
-                        "type": "heading"
-                    })
+                    potential_insertion_points.append(clean_heading[:50])
             
-            # Add paragraphs that might start sections
-            # (first paragraph after a heading, or paragraphs with strong/bold text at start)
             for paragraph in paragraphs:
-                # Clean HTML tags but keep track if it starts with bold/strong
-                is_section_start = "<strong>" in paragraph[:50] or "<b>" in paragraph[:50]
+                # Clean HTML tags from paragraph
                 clean_para = re.sub(r'<[^>]+>', '', paragraph)
-                
-                if clean_para.strip() and (is_section_start or len(potential_insertion_points) < 5):
-                    potential_insertion_points.append({
-                        "id": len(potential_insertion_points) + 1,
-                        "text": clean_para.strip()[:100],  # Take first 100 chars max
-                        "type": "paragraph"
-                    })
+                if clean_para.strip():
+                    potential_insertion_points.append(clean_para[:50])
             
-            # Print the potential insertion points for debugging
-            print("\n🔍 Potential insertion points:")
-            for point in potential_insertion_points:
-                print(f"  ID {point['id']} ({point['type']}): \"{point['text'][:50]}...\"")
+            # Filter out duplicates and very short insertion points
+            potential_insertion_points = [p for p in potential_insertion_points if len(p) > 10]
+            potential_insertion_points = list(dict.fromkeys(potential_insertion_points))  # Remove duplicates
             
             # Format the insertion points for the prompt
-            insertion_points_text = "\n".join([
-                f"- ID {point['id']}: \"{point['text'][:50]}...\" ({point['type']})" 
-                for point in potential_insertion_points
-            ])
+            insertion_points_text = "\n".join([f"- \"{point}...\"" for point in potential_insertion_points[:20]])
 
             # Create the prompt for the agent with clearer instructions
             prompt = f"""
@@ -319,15 +295,15 @@ class PostWriterV2:
             {truncated_post}
 
             INSTRUCTIONS FOR USING TOOLS:
-            1. Review the list of section headings and important paragraphs below
-            2. Choose 2-3 sections that would benefit most from media enhancement
-            3. For each chosen section, decide whether an image or video would be most helpful
-            4. Use the appropriate tool (GenerateImage or GetYouTubeVideo) to create that media
-            5. After using all tools, compile your results into a JSON array
+            1. Read the blog post and identify 2-3 good places to add media between paragraphs
+            2. For each place, decide whether an image or video would be most helpful
+            3. Use the appropriate tool (GenerateImage or GetYouTubeVideo) to create that media            
+            4. After using all tools, compile your results into a JSON array
             
             Each media placement MUST:
             - Directly help readers understand the content or provide valuable visual context
-            - Be placed either before or after a section heading or important paragraph
+            - ONLY be placed BETWEEN complete HTML elements (paragraphs, sections, list items)
+            - NEVER be placed within a paragraph, sentence, or HTML element
             - Make sense in the overall context of the post
                         
             IMPORTANT: When using tools, you MUST follow this EXACT format:
@@ -354,22 +330,17 @@ class PostWriterV2:
                   Action: GetYouTubeVideo
                   Action Input: Proper rucking technique demonstration
 
-            AVAILABLE INSERTION POINTS:
-            {insertion_points_text}
-
             FINAL OUTPUT FORMAT:
             After using the tools, return ONLY a JSON array with this EXACT format:
             [
               {{
-                "locationId": 3,
-                "position": "before",
+                "insertBefore": "exact text from the blog post",
                 "mediaType": "image",
                 "mediaUrl": "https://example.com/image.jpg",
                 "description": "explanation of how this helps"
               }},
               {{
-                "locationId": 7,
-                "position": "after",
+                "insertBefore": "another exact text from the blog post",
                 "mediaType": "video",
                 "mediaUrl": "https://youtube.com/watch?v=abcdef",
                 "description": "explanation of how this helps"
@@ -379,8 +350,9 @@ class PostWriterV2:
             IMPORTANT RULES FOR FINAL OUTPUT:
             1. For images, the mediaUrl must be the URL returned by GenerateImage
             2. For videos, the mediaUrl must be the YouTube URL returned by GetYouTubeVideo
-            3. The "locationId" MUST be one of the IDs from the list of available insertion points
-            4. The "position" must be either "before" or "after" the specified location
+            3. The "insertBefore" value MUST be chosen from this list of valid insertion points:
+            {insertion_points_text}
+            4. Copy the insertion point EXACTLY as shown above - do not modify or add to it
             5. Do NOT include any explanatory text, code blocks, or backticks
             6. Return ONLY the JSON array
             """
@@ -414,31 +386,18 @@ class PostWriterV2:
             processed_items = []
             
             for item in media_items:
-                # Store the original location ID and position
-                location_id = item["locationId"]
-                position = item["position"]
-                
-                # Find the corresponding insertion point text
-                insertion_point = next((p for p in potential_insertion_points if p["id"] == location_id), None)
-                
-                if insertion_point:
-                    # Add the insertion point text to the item for later use
-                    item["insertionPoint"] = insertion_point
-                    
-                    if item["mediaType"] == "image":
-                        # Generate image using existing method
-                        image_url = self.img_client.generate_image(item["description"])
-                        if "wp-content/uploads" in image_url:
-                            item["mediaUrl"] = image_url
-                            processed_items.append(item)
-                    elif item["mediaType"] == "video":
-                        # Get video using existing method
-                        video_url = self.img_client.getYouTubeVideo(item["description"])
-                        if "youtube.com" in video_url:
-                            item["mediaUrl"] = video_url
-                            processed_items.append(item)
-                else:
-                    print(f"⚠️ Invalid location ID: {location_id}")
+                if item["mediaType"] == "image":
+                    # Generate image using existing method
+                    image_url = self.img_client.generate_image(item["description"])
+                    if "wp-content/uploads" in image_url:
+                        item["mediaUrl"] = image_url
+                        processed_items.append(item)
+                elif item["mediaType"] == "video":
+                    # Get video using existing method
+                    video_url = self.img_client.getYouTubeVideo(item["description"])
+                    if "youtube.com" in video_url:
+                        item["mediaUrl"] = video_url
+                        processed_items.append(item)
 
             return json.dumps(processed_items, indent=2)
             
@@ -471,79 +430,61 @@ class PostWriterV2:
             for i, placement in enumerate(media_placements, 1):
                 print(f"\n🖼️ Processing placement {i}:")
                 
-                # Get the insertion point information
-                insertion_point = placement.get("insertionPoint", {})
-                location_id = placement.get("locationId")
-                position = placement.get("position", "before")
-                media_type = placement.get("mediaType")
+                # Get the insertion point text
+                insert_before = placement['insertBefore']
+                media_type = placement['mediaType']
                 
                 print(f"  Type: {media_type}")
-                print(f"  Location ID: {location_id}")
-                print(f"  Position: {position}")
+                print(f"  Original Insert Before: {insert_before[:50]}...")
                 
-                if not insertion_point:
-                    print("  ❌ Missing insertion point information")
-                    continue
-                    
-                # Get the text to search for
-                search_text = insertion_point.get("text", "")[:50]  # Use first 50 chars for searching
-                print(f"  Searching for: \"{search_text}...\"")
-                
-                # Find the text in the content
+                # Clean up the insert_before text to remove any HTML tags
                 import re
+                clean_insert_before = re.sub(r'<[^>]+>', '', insert_before).strip()
                 
-                # Clean the search text of any HTML tags and escape regex special chars
-                clean_search_text = re.sub(r'<[^>]+>', '', search_text)
-                clean_search_text = re.escape(clean_search_text)
+                # Find the exact text in the content
+                start_pos = -1
                 
-                # Try to find the text in the HTML content
-                matches = list(re.finditer(clean_search_text, html_content, re.IGNORECASE))
-                
-                if matches:
-                    # Use the first match
-                    match = matches[0]
-                    start_pos = match.start()
-                    end_pos = match.end()
+                # Try to find the exact text
+                if insert_before in html_content:
+                    start_pos = html_content.find(insert_before)
+                    print(f"  Found exact match at position {start_pos}")
+                elif clean_insert_before in html_content:
+                    start_pos = html_content.find(clean_insert_before)
+                    print(f"  Found cleaned match at position {start_pos}")
+                else:
+                    # Try to find the paragraph or heading containing this text
+                    print("  ⚠️ Exact match not found, searching for containing element...")
                     
-                    print(f"  ✅ Found text at position {start_pos}")
-                    
-                    # If it's a heading, try to find the complete heading tag
-                    if insertion_point.get("type") == "heading":
-                        # Look for the nearest heading tag before this position
-                        heading_start = max(
-                            html_content.rfind("<h1", 0, start_pos),
-                            html_content.rfind("<h2", 0, start_pos),
-                            html_content.rfind("<h3", 0, start_pos),
-                            html_content.rfind("<h4", 0, start_pos),
-                            html_content.rfind("<h5", 0, start_pos),
-                            html_content.rfind("<h6", 0, start_pos)
-                        )
+                    # Look for paragraphs, headings, and list items that might contain this text
+                    for tag in ['<p', '<h1', '<h2', '<h3', '<h4', '<h5', '<h6', '<li']:
+                        # Find all instances of this tag
+                        tag_positions = [m.start() for m in re.finditer(tag, html_content)]
                         
-                        if heading_start != -1:
-                            # Find the end of this heading tag
-                            heading_end = html_content.find("</h", heading_start)
-                            if heading_end != -1:
-                                heading_end = html_content.find(">", heading_end) + 1
+                        for pos in tag_positions:
+                            # Find the end of this tag
+                            tag_end = html_content.find('>', pos)
+                            if tag_end == -1:
+                                continue
                                 
-                                # Update positions based on the complete heading tag
-                                if position == "before":
-                                    start_pos = heading_start
-                                else:  # after
-                                    start_pos = heading_end
-                    else:
-                        # For paragraphs, find the complete paragraph tag
-                        para_start = html_content.rfind("<p", 0, start_pos)
-                        if para_start != -1:
-                            para_end = html_content.find("</p>", start_pos)
-                            if para_end != -1:
-                                para_end += 4  # Include the </p> tag
+                            # Find the closing tag
+                            closing_tag = f"</{tag[1:]}>"
+                            closing_pos = html_content.find(closing_tag, tag_end)
+                            if closing_pos == -1:
+                                continue
                                 
-                                # Update positions based on the complete paragraph tag
-                                if position == "before":
-                                    start_pos = para_start
-                                else:  # after
-                                    start_pos = para_end
-                    
+                            # Extract the content of this element
+                            element_content = html_content[tag_end+1:closing_pos]
+                            
+                            # Check if our text is in this element
+                            if clean_insert_before[:20] in element_content:
+                                start_pos = tag_end + 1
+                                print(f"  Found containing element at position {start_pos}")
+                                break
+                        
+                        if start_pos != -1:
+                            break
+                
+                if start_pos != -1:
                     # Create the media HTML
                     if media_type == 'image':
                         wordpress_url = placement['mediaUrl']
@@ -552,22 +493,17 @@ class PostWriterV2:
                         video_url = placement['mediaUrl']
                         media_html = f'[embed]{video_url}[/embed]'
                     
-                    # Insert the media at the specified position
-                    if position == "before":
-                        html_content = html_content[:start_pos] + f"\n{media_html}\n\n" + html_content[start_pos:]
-                    else:  # after
-                        html_content = html_content[:start_pos] + f"\n\n{media_html}\n" + html_content[start_pos:]
-                    
-                    print(f"  ✅ Media inserted {position} the {insertion_point.get('type')}")
+                    # Insert the media before the paragraph
+                    html_content = html_content[:start_pos] + f"\n{media_html}\n\n" + html_content[start_pos:]
+                    print("  ✅ Media inserted successfully")
                 else:
-                    print(f"  ❌ Could not find text: '{search_text}'")
+                    print("  ❌ Could not find insertion point")
             
             return html_content
             
         except Exception as e:
             print(f"Error in media population: {str(e)}")
             return html_content
-
 def main():
    post_writer = PostWriterV2(base_url="https://ruckquest.com")
    sample_post = """""<p>Rucking, the act of walking or hiking with a weighted backpack, has exploded in popularity as a fantastic way to build strength, endurance, and mental toughness. But as with any fitness activity, the gear can sometimes be a barrier.  If you're looking to get started with rucking without breaking the bank, you're in the right place. This guide dives deep into the world of <strong>cheap rucking backpacks</strong>, exploring how to find a functional and affordable pack that won't compromise your training or comfort.</p>
