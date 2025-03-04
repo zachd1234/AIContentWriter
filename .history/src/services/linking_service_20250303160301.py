@@ -129,65 +129,30 @@ class LinkingAgent:
             if not suggestions:
                 return content
             
-            # Create a list of characters to track which parts are already linked
-            content_chars = list(content)
-            linked_chars = [False] * len(content_chars)
+            # Format the response
+            modified_content = content
             
-            # Sort suggestions by position in the content to process from start to end
-            suggestions_with_positions = []
             for suggestion in suggestions:
                 anchor_text = suggestion['anchor_text']
-                # Find all occurrences of the anchor text
-                start_pos = 0
-                while True:
-                    index = content.find(anchor_text, start_pos)
-                    if index == -1:
-                        break
-                    suggestions_with_positions.append((index, suggestion))
-                    start_pos = index + 1
-            
-            # Sort by position (index) in the content
-            suggestions_with_positions.sort()
-            
-            # Process suggestions in order of appearance
-            offset = 0  # Track how much the string has grown due to added HTML
-            
-            for original_index, suggestion in suggestions_with_positions:
-                # Adjust index based on current offset
-                index = original_index + offset
-                anchor_text = suggestion['anchor_text']
                 target_url = suggestion['target_url']
-                anchor_length = len(anchor_text)
+                html_link = f'<a href="{target_url}">{anchor_text}</a>'
                 
-                # Check if any part of this region is already linked
-                region_available = True
-                for i in range(index, min(index + anchor_length, len(linked_chars))):
-                    if linked_chars[i]:
-                        region_available = False
-                        break
+                # Use regex to find the anchor text that is not inside HTML tags
+                # This pattern looks for the anchor text that is not inside < and >
+                pattern = re.compile(f'(?<![<>])(?<![<][^>]*){re.escape(anchor_text)}(?![^<]*[>])')
                 
-                if region_available:
-                    # Replace the anchor text with the linked version
-                    html_link = f'<a href="{target_url}">{anchor_text}</a>'
+                # Find first occurrence that matches our pattern
+                match = pattern.search(modified_content)
+                if match:
+                    # Get the position of the match
+                    start = match.start()
+                    end = match.end()
                     
-                    # Update the content
-                    content_before = ''.join(content_chars[:index])
-                    content_after = ''.join(content_chars[index + anchor_length:])
-                    new_content = content_before + html_link + content_after
-                    
-                    # Update tracking variables
-                    old_length = len(content_chars)
-                    content_chars = list(new_content)
-                    linked_chars = [False] * len(content_chars)
-                    
-                    # Mark the newly linked region
-                    for i in range(index, index + len(html_link)):
-                        linked_chars[i] = True
-                    
-                    # Update offset
-                    offset += len(html_link) - anchor_length
+                    # Replace only this specific occurrence
+                    modified_content = modified_content[:start] + html_link + modified_content[end:]
+                    print(f"Added link: '{anchor_text}' → {target_url}")
             
-            return ''.join(content_chars)
+            return modified_content
             
         except Exception as e:
             print(f"Error in link processing: {str(e)}")
