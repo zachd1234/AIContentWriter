@@ -24,7 +24,7 @@ class LinkingAgent:
         """Suggests internal links for a given post content"""
         try:
             # Create the prompt with the available posts and content
-            prompt = f"""You are an expert content editor specializing in internal linking. Your goal is to suggest links that maximize the user experience. 
+            prompt = f"""You are an expert content editor specializing in internal linking.
             Analyze this content and suggest high-value internal links from our available posts.
 
             Available posts for linking:
@@ -36,8 +36,7 @@ class LinkingAgent:
             Guidelines for good linking:
             - Use natural, contextual anchor text (no "click here" or "read more")
             - Ensure links are topically relevant
-            - The anchor_text must exactly match the text in the content.
-            - The anchor text should make sense given the post you are linking to.  
+            - Choose anchor text that appears in the original content.
             - Space out links throughout the entire post. Don't excessively add links in one paragraph.
             - Only suggest links to posts from the available posts list
 
@@ -118,26 +117,15 @@ class LinkingAgent:
             
             print(f"\nReceived {len(suggestions)} link suggestions")
             
-            # Filter out duplicate anchor texts - keep only the first occurrence
-            unique_anchor_texts = set()
-            filtered_suggestions = []
-            
-            for suggestion in suggestions:
-                anchor_text = suggestion['anchor_text']
-                if anchor_text not in unique_anchor_texts:
-                    unique_anchor_texts.add(anchor_text)
-                    filtered_suggestions.append(suggestion)
-                else:
-                    print(f"Skipping duplicate anchor text: '{anchor_text}'")
-            
-            print(f"Filtered to {len(filtered_suggestions)} unique anchor texts")
-            
             # Track which URLs have been used
             used_urls = set()
             
-            # Find positions for each suggestion and filter out duplicates
-            suggestions_with_positions = []
-            for suggestion in filtered_suggestions:
+            # Create a copy of the content to modify
+            modified_content = content
+            offset = 0  # Track how much the string has grown due to added HTML
+            
+            # Process each suggestion
+            for suggestion in suggestions:
                 anchor_text = suggestion['anchor_text']
                 target_url = suggestion['target_url']
                 
@@ -152,23 +140,13 @@ class LinkingAgent:
                     print(f"Anchor text not found: '{anchor_text}'")
                     continue
                 
-                # Add to our list of valid suggestions with positions
-                suggestions_with_positions.append((index, suggestion))
-                used_urls.add(target_url)
-            
-            # Sort by position in the content
-            suggestions_with_positions.sort(key=lambda x: x[0])
-            
-            # Create a copy of the content to modify
-            modified_content = content
-            offset = 0  # Track how much the string has grown due to added HTML
-            
-            # Process each suggestion in order of appearance
-            for original_index, suggestion in suggestions_with_positions:
                 # Adjust index based on current offset
-                adjusted_index = original_index + offset
-                anchor_text = suggestion['anchor_text']
-                target_url = suggestion['target_url']
+                adjusted_index = index + offset
+                
+                # Check if this region already contains a link
+                if "<a " in modified_content[max(0, adjusted_index-50):adjusted_index+len(anchor_text)+50]:
+                    print(f"Region already contains links: '{anchor_text}'")
+                    continue
                 
                 # Replace the anchor text with the linked version
                 html_link = f'<a href="{target_url}">{anchor_text}</a>'
@@ -182,6 +160,9 @@ class LinkingAgent:
                 
                 # Update offset
                 offset += len(html_link) - len(anchor_text)
+                
+                # Mark this URL as used
+                used_urls.add(target_url)
                 
                 print(f"Added link: '{anchor_text}' → {target_url}")
             

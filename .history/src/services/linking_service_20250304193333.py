@@ -17,14 +17,14 @@ class LinkingAgent:
         project_id = os.getenv('GOOGLE_CLOUD_PROJECT_ID')
         vertexai.init(project=project_id, location="us-central1")
         
-        # Initialize model with the correct model name
-        self.model = GenerativeModel("gemini-2.0-flash-001")
+        # Initialize model
+        self.model = GenerativeModel("gemini-2.0-flash-thinking-exp-01-21")
         
     def suggest_internal_links(self, post_content: str) -> str:
         """Suggests internal links for a given post content"""
         try:
             # Create the prompt with the available posts and content
-            prompt = f"""You are an expert content editor specializing in internal linking. Your goal is to suggest links that maximize the user experience. 
+            prompt = f"""You are an expert content editor specializing in internal linking.
             Analyze this content and suggest high-value internal links from our available posts.
 
             Available posts for linking:
@@ -36,42 +36,56 @@ class LinkingAgent:
             Guidelines for good linking:
             - Use natural, contextual anchor text (no "click here" or "read more")
             - Ensure links are topically relevant
-            - The anchor_text must exactly match the text in the content.
-            - The anchor text should make sense given the post you are linking to.  
+            - Choose anchor text that appears in the original content
             - Space out links throughout the entire post. Don't excessively add links in one paragraph.
             - Only suggest links to posts from the available posts list
 
-            Return a list of suggested internal links with their anchor text, target URL, context, and reasoning.
+            IMPORTANT: You must return ONLY a valid JSON array with no additional text, explanation, or markdown formatting.
+            Each object in the array must have these exact fields:
+            - 'anchor_text': natural phrase from the content
+            - 'target_url': matching post URL
+            - 'context': surrounding paragraph or sentence
+            - 'reasoning': why this link adds value
+
+            Example of the expected format:
+            [
+              {{
+                "anchor_text": "rucking vests",
+                "target_url": "https://example.com/vests",
+                "context": "The surrounding text where the anchor text appears",
+                "reasoning": "This link connects the mention of vests to a detailed guide"
+              }},
+              {{
+                "anchor_text": "another phrase",
+                "target_url": "https://example.com/another",
+                "context": "More surrounding text",
+                "reasoning": "Another reason"
+              }}
+            ]
+
+            Return ONLY the JSON array with no additional text or explanation.
             """
             
-            # Define the response schema for structured output
-            response_schema = {
-                "type": "ARRAY",
-                "items": {
-                    "type": "OBJECT",
-                    "properties": {
-                        "anchor_text": {"type": "STRING"},
-                        "target_url": {"type": "STRING"},
-                        "context": {"type": "STRING"},
-                        "reasoning": {"type": "STRING"}
-                    },
-                    "required": ["anchor_text", "target_url", "context", "reasoning"]
-                }
-            }
-            
-            # Get response from model with structured output
+            # Get response from model
             response = self.model.generate_content(
                 prompt,
                 generation_config=GenerationConfig(
-                    temperature=0.0,
-                    response_mime_type="application/json",
-                    response_schema=response_schema
+                    temperature=0.0
                 )
             )
             
             try:
-                # Parse the structured output
-                suggestions = json.loads(response.text)
+                # Find JSON in response
+                output_text = response.text
+                start = output_text.find('[')
+                end = output_text.rfind(']') + 1
+                
+                if start == -1 or end == 0:
+                    print("No JSON array found in response")
+                    return []
+                    
+                json_str = output_text[start:end]
+                suggestions = json.loads(json_str)
                 
                 # Display the suggestions
                 print("\nAI Agent's Link Suggestions:")
@@ -86,7 +100,7 @@ class LinkingAgent:
                 
             except json.JSONDecodeError as e:
                 print(f"Error parsing JSON response: {str(e)}")
-                print(f"Raw response: {response.text}")
+                print(f"Raw response: {output_text}")
                 return []
             
         except Exception as e:
@@ -113,83 +127,134 @@ class LinkingAgent:
             suggestions = self.suggest_internal_links(content)
             
             if not suggestions:
-                print("No link suggestions were returned.")
                 return content
             
-            print(f"\nReceived {len(suggestions)} link suggestions")
+            # Create a list of characters to track which parts are already linked
+            content_chars = list(content)
+            linked_chars = [False] * len(content_chars)
             
-            # Filter out duplicate anchor texts - keep only the first occurrence
-            unique_anchor_texts = set()
-            filtered_suggestions = []
-            
+            # Sort suggestions by position in the content to process from start to end
+            suggestions_with_positions = []
             for suggestion in suggestions:
                 anchor_text = suggestion['anchor_text']
-                if anchor_text not in unique_anchor_texts:
-                    unique_anchor_texts.add(anchor_text)
-                    filtered_suggestions.append(suggestion)
-                else:
-                    print(f"Skipping duplicate anchor text: '{anchor_text}'")
+                # Find all occurrences of the anchor text
+                start_pos = 0
+                while True:
+                    index = content.find(anchor_text, start_pos)
+                    if index == -1:
+                        break
+                    suggestions_with_positions.append((index, suggestion))
+                    start_pos = index + 1
             
-            print(f"Filtered to {len(filtered_suggestions)} unique anchor texts")
+            # Sort by position (index) in the content
+            suggestions_with_positions.sort()
             
-            # Track which URLs have been used
-            used_urls = set()
-            
-            # Find positions for each suggestion and filter out duplicates
-            suggestions_with_positions = []
-            for suggestion in filtered_suggestions:
-                anchor_text = suggestion['anchor_text']
-                target_url = suggestion['target_url']
-                
-                # Skip if this URL has already been used
-                if target_url in used_urls:
-                    print(f"Skipping: URL already used - {target_url}")
-                    continue
-                
-                # Find the first occurrence of the anchor text
-                index = content.find(anchor_text)
-                if index == -1:
-                    print(f"Anchor text not found: '{anchor_text}'")
-                    continue
-                
-                # Add to our list of valid suggestions with positions
-                suggestions_with_positions.append((index, suggestion))
-                used_urls.add(target_url)
-            
-            # Sort by position in the content
-            suggestions_with_positions.sort(key=lambda x: x[0])
-            
-            # Create a copy of the content to modify
-            modified_content = content
+            # Process suggestions in order of appearance
             offset = 0  # Track how much the string has grown due to added HTML
             
-            # Process each suggestion in order of appearance
             for original_index, suggestion in suggestions_with_positions:
                 # Adjust index based on current offset
-                adjusted_index = original_index + offset
+                index = original_index + offset
                 anchor_text = suggestion['anchor_text']
                 target_url = suggestion['target_url']
+                anchor_length = len(anchor_text)
                 
-                # Replace the anchor text with the linked version
-                html_link = f'<a href="{target_url}">{anchor_text}</a>'
+                # Check if any part of this region is already linked
+                region_available = True
+                for i in range(index, min(index + anchor_length, len(linked_chars))):
+                    if linked_chars[i]:
+                        region_available = False
+                        break
                 
-                # Update the content
-                modified_content = (
-                    modified_content[:adjusted_index] + 
-                    html_link + 
-                    modified_content[adjusted_index + len(anchor_text):]
-                )
-                
-                # Update offset
-                offset += len(html_link) - len(anchor_text)
-                
-                print(f"Added link: '{anchor_text}' → {target_url}")
+                if region_available:
+                    # Replace the anchor text with the linked version
+                    html_link = f'<a href="{target_url}">{anchor_text}</a>'
+                    
+                    # Update the content
+                    content_before = ''.join(content_chars[:index])
+                    content_after = ''.join(content_chars[index + anchor_length:])
+                    new_content = content_before + html_link + content_after
+                    
+                    # Update tracking variables
+                    old_length = len(content_chars)
+                    content_chars = list(new_content)
+                    linked_chars = [False] * len(content_chars)
+                    
+                    # Mark the newly linked region
+                    for i in range(index, index + len(html_link)):
+                        linked_chars[i] = True
+                    
+                    # Update offset
+                    offset += len(html_link) - anchor_length
             
-            return modified_content
+            return ''.join(content_chars)
             
         except Exception as e:
             print(f"Error in link processing: {str(e)}")
             return content
+
+    def format_link_response(self, agent_output: str) -> list:
+        """Uses LLM to standardize the link suggestions format"""
+        try:
+            format_prompt = f"""
+            Extract the link suggestions from this agent output and format them as a clean JSON array.
+            
+            Input:
+            {agent_output}
+            
+            Rules:
+            1. Each object must have these exact fields:
+               - anchorText
+               - targetUrl
+               - context
+               - reasoning
+            2. Return ONLY the JSON array, no other text or explanation
+            3. Ensure the JSON is properly formatted and valid
+            4. Do NOT include any markdown code blocks or backticks
+            
+            Good example:
+            [
+              {{
+                "anchorText": "rucking vests",
+                "targetUrl": "https://example.com/vests",
+                "context": "The surrounding text where the link should be placed",
+                "reasoning": "Why this link is relevant"
+              }}
+            ]
+            """
+            
+            # Use the correct method for your model type
+            response = self.model.generate_content(format_prompt)
+            
+            # Extract text based on the model's response structure
+            if hasattr(response, 'text'):
+                formatted_json = response.text.strip()
+            elif hasattr(response, 'content'):
+                formatted_json = response.content.strip()
+            else:
+                formatted_json = str(response).strip()
+            
+            # Remove any markdown code blocks (including variations with different numbers of backticks)
+            formatted_json = re.sub(r'```+\s*json\s*', '', formatted_json)
+            formatted_json = re.sub(r'```+', '', formatted_json)
+            formatted_json = formatted_json.strip()
+            
+            # Find JSON array pattern if still having issues
+            json_pattern = re.search(r'\[\s*\{.*?\}\s*\]', formatted_json, re.DOTALL)
+            if json_pattern:
+                formatted_json = json_pattern.group(0)
+            
+            # Validate JSON
+            try:
+                links = json.loads(formatted_json)
+                return links
+            except json.JSONDecodeError:
+                print("❌ Formatter produced invalid JSON for links")
+                return []
+                
+        except Exception as e:
+            print(f"❌ Error in format_link_response: {str(e)}")
+            return []
 
 def main():
     test_content = """

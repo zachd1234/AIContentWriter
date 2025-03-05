@@ -24,7 +24,7 @@ class LinkingAgent:
         """Suggests internal links for a given post content"""
         try:
             # Create the prompt with the available posts and content
-            prompt = f"""You are an expert content editor specializing in internal linking. Your goal is to suggest links that maximize the user experience. 
+            prompt = f"""You are an expert content editor specializing in internal linking.
             Analyze this content and suggest high-value internal links from our available posts.
 
             Available posts for linking:
@@ -36,8 +36,7 @@ class LinkingAgent:
             Guidelines for good linking:
             - Use natural, contextual anchor text (no "click here" or "read more")
             - Ensure links are topically relevant
-            - The anchor_text must exactly match the text in the content.
-            - The anchor text should make sense given the post you are linking to.  
+            - Choose anchor text that appears in the original content.
             - Space out links throughout the entire post. Don't excessively add links in one paragraph.
             - Only suggest links to posts from the available posts list
 
@@ -116,79 +115,131 @@ class LinkingAgent:
                 print("No link suggestions were returned.")
                 return content
             
-            print(f"\nReceived {len(suggestions)} link suggestions")
-            
-            # Filter out duplicate anchor texts - keep only the first occurrence
-            unique_anchor_texts = set()
-            filtered_suggestions = []
-            
-            for suggestion in suggestions:
-                anchor_text = suggestion['anchor_text']
-                if anchor_text not in unique_anchor_texts:
-                    unique_anchor_texts.add(anchor_text)
-                    filtered_suggestions.append(suggestion)
-                else:
-                    print(f"Skipping duplicate anchor text: '{anchor_text}'")
-            
-            print(f"Filtered to {len(filtered_suggestions)} unique anchor texts")
+            print(f"\n🔍 DEBUG: Received {len(suggestions)} link suggestions")
             
             # Track which URLs have been used
             used_urls = set()
             
-            # Find positions for each suggestion and filter out duplicates
+            # Create a list of characters to track which parts are already linked
+            content_chars = list(content)
+            linked_chars = [False] * len(content_chars)
+            
+            # Sort suggestions by position in the content to process from start to end
             suggestions_with_positions = []
-            for suggestion in filtered_suggestions:
+            for i, suggestion in enumerate(suggestions):
                 anchor_text = suggestion['anchor_text']
                 target_url = suggestion['target_url']
+                
+                print(f"\n🔍 DEBUG: Processing suggestion #{i+1}: \"{anchor_text}\" → {target_url}")
                 
                 # Skip if this URL has already been used
                 if target_url in used_urls:
-                    print(f"Skipping: URL already used - {target_url}")
+                    print(f"  ❌ Skipping: URL already used")
                     continue
-                
+                    
                 # Find the first occurrence of the anchor text
                 index = content.find(anchor_text)
-                if index == -1:
-                    print(f"Anchor text not found: '{anchor_text}'")
-                    continue
-                
-                # Add to our list of valid suggestions with positions
-                suggestions_with_positions.append((index, suggestion))
-                used_urls.add(target_url)
+                if index != -1:
+                    print(f"  ✅ Found anchor text at position {index}")
+                    suggestions_with_positions.append((index, suggestion))
+                    used_urls.add(target_url)  # Mark this URL as used
+                else:
+                    print(f"  ❌ Anchor text not found in content")
+                    # Add detailed debugging for exact text matching
+                    print(f"    🔍 Searching for: '{anchor_text}'")
+                    print(f"    🔍 Content contains this text: {anchor_text in content}")
+                    
+                    # Check for whitespace or invisible character issues
+                    clean_anchor = anchor_text.strip()
+                    clean_content = content.replace('\n', ' ').replace('\r', ' ')
+                    if clean_anchor in clean_content:
+                        print(f"    💡 Found after cleaning whitespace")
+                        # Find the actual position
+                        clean_index = clean_content.find(clean_anchor)
+                        print(f"    💡 Position in cleaned content: {clean_index}")
+                        # Try to find corresponding position in original content
+                        content_before = clean_content[:clean_index]
+                        original_index = len(content_before)
+                        print(f"    💡 Approximate position in original: {original_index}")
+                        print(f"    💡 Context: '{clean_content[max(0, clean_index-20):min(len(clean_content), clean_index+len(clean_anchor)+20)]}'")
+                    
+                    # Check for case sensitivity
+                    if anchor_text.lower() in content.lower() and not anchor_text in content:
+                        print(f"    💡 Found case-insensitive match")
+                        # Try to find the actual case in the content
+                        import re
+                        case_insensitive_matches = re.finditer(re.escape(anchor_text), content, re.IGNORECASE)
+                        for match in case_insensitive_matches:
+                            print(f"    💡 Actual text in content: '{content[match.start():match.end()]}'")
+                            print(f"    💡 Position: {match.start()}")
+                    
+                    # Check for partial matches to help debug
+                    words = anchor_text.split()
+                    if len(words) > 1:
+                        for i in range(len(words) - 1):
+                            partial = " ".join(words[:i+1])
+                            if partial in content:
+                                print(f"    💡 Partial match found: \"{partial}\"")
+                                partial_index = content.find(partial)
+                                print(f"    💡 Partial match position: {partial_index}")
+                                print(f"    💡 Context: '{content[max(0, partial_index-10):min(len(content), partial_index+len(partial)+30)]}'")
             
-            # Sort by position in the content
+            print(f"\n🔍 DEBUG: Found {len(suggestions_with_positions)} valid positions for link insertion")
+            
+            # Sort by position (index) in the content
             suggestions_with_positions.sort(key=lambda x: x[0])
             
-            # Create a copy of the content to modify
-            modified_content = content
+            # Process suggestions in order of appearance
             offset = 0  # Track how much the string has grown due to added HTML
+            links_inserted = 0
             
-            # Process each suggestion in order of appearance
             for original_index, suggestion in suggestions_with_positions:
                 # Adjust index based on current offset
-                adjusted_index = original_index + offset
+                index = original_index + offset
                 anchor_text = suggestion['anchor_text']
                 target_url = suggestion['target_url']
+                anchor_length = len(anchor_text)
                 
-                # Replace the anchor text with the linked version
-                html_link = f'<a href="{target_url}">{anchor_text}</a>'
+                print(f"\n🔍 DEBUG: Inserting link for \"{anchor_text}\" at adjusted position {index}")
                 
-                # Update the content
-                modified_content = (
-                    modified_content[:adjusted_index] + 
-                    html_link + 
-                    modified_content[adjusted_index + len(anchor_text):]
-                )
+                # Check if any part of this region is already linked
+                region_available = True
+                for i in range(index, min(index + anchor_length, len(linked_chars))):
+                    if linked_chars[i]:
+                        region_available = False
+                        print(f"  ❌ Region already contains links")
+                        break
                 
-                # Update offset
-                offset += len(html_link) - len(anchor_text)
-                
-                print(f"Added link: '{anchor_text}' → {target_url}")
+                if region_available:
+                    # Replace the anchor text with the linked version
+                    html_link = f'<a href="{target_url}">{anchor_text}</a>'
+                    
+                    # Update the content
+                    content_before = ''.join(content_chars[:index])
+                    content_after = ''.join(content_chars[index + anchor_length:])
+                    new_content = content_before + html_link + content_after
+                    
+                    # Update tracking variables
+                    content_chars = list(new_content)
+                    linked_chars = [False] * len(content_chars)
+                    
+                    # Mark the newly linked region
+                    for i in range(index, index + len(html_link)):
+                        linked_chars[i] = True
+                    
+                    # Update offset
+                    offset += len(html_link) - anchor_length
+                    links_inserted += 1
+                    print(f"  ✅ Link successfully inserted")
             
-            return modified_content
+            print(f"\n🔍 DEBUG: Inserted {links_inserted} links out of {len(suggestions)} suggestions")
+            
+            return ''.join(content_chars)
             
         except Exception as e:
             print(f"Error in link processing: {str(e)}")
+            import traceback
+            traceback.print_exc()  # Print the full stack trace for better debugging
             return content
 
 def main():
