@@ -36,8 +36,7 @@ class LinkingAgent:
             Guidelines for good linking:
             - Use natural, contextual anchor text (no "click here" or "read more")
             - Ensure links are topically relevant
-            - The anchor_text must exactly match the text in the content.
-            - The anchor text should make sense given the post you are linking to.  
+            - The anchor_text should appear in the content exactly. 
             - Space out links throughout the entire post. Don't excessively add links in one paragraph.
             - Only suggest links to posts from the available posts list
 

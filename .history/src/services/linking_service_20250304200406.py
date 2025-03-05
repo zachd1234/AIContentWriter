@@ -24,7 +24,7 @@ class LinkingAgent:
         """Suggests internal links for a given post content"""
         try:
             # Create the prompt with the available posts and content
-            prompt = f"""You are an expert content editor specializing in internal linking. Your goal is to suggest links that maximize the user experience. 
+            prompt = f"""You are an expert content editor specializing in internal linking.
             Analyze this content and suggest high-value internal links from our available posts.
 
             Available posts for linking:
@@ -36,10 +36,16 @@ class LinkingAgent:
             Guidelines for good linking:
             - Use natural, contextual anchor text (no "click here" or "read more")
             - Ensure links are topically relevant
-            - The anchor_text must exactly match the text in the content.
-            - The anchor text should make sense given the post you are linking to.  
+            - CRITICAL: The anchor_text MUST be an EXACT word-for-word match from the content
+            - Verify each anchor text exists in the content before suggesting it
             - Space out links throughout the entire post. Don't excessively add links in one paragraph.
             - Only suggest links to posts from the available posts list
+
+            IMPORTANT INSTRUCTIONS:
+            1. Copy and paste exact phrases from the content for anchor_text
+            2. Do not modify, paraphrase, or create new anchor text
+            3. Double-check that each anchor_text exists verbatim in the content
+            4. The match must be CASE-SENSITIVE (uppercase/lowercase matters)
 
             Return a list of suggested internal links with their anchor text, target URL, context, and reasoning.
             """
