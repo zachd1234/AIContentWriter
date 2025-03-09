@@ -17,6 +17,8 @@ class KeywordRequest(BaseModel):
     keyword: str
 
 class OutreachSetupRequest(BaseModel):
+    blog_title: str
+    blog_description: str
     site_id: int
 
 class OutreachCampaignRequest(BaseModel):
@@ -84,7 +86,11 @@ async def setup_outreach(request: OutreachSetupRequest, x_api_key: str = Header(
     """
     try:
         control_panel = create_default_control_panel()
-        result = control_panel.setup_outreach(request.site_id)
+        result = control_panel.setup_outreach(
+            request.blog_title, 
+            request.blog_description, 
+            request.site_id
+        )
         
         return {
             "status": "success",

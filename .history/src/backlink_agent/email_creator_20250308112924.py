@@ -7,16 +7,27 @@ logger = logging.getLogger(__name__)
 # Hard-coded API URL
 POST_PITCH_API_URL = "https://post-pitch-fork.onrender.com/"
 
-# Import the template maker module
-import template_maker
+# Hard-coded outreach template
+DEFAULT_OUTREACH_TEMPLATE = """
+I'm reaching out because I think I could write a great guest post for your site that would provide value to your readers.
+
+I've been writing about this topic for several years and have been published on several other sites in your niche.
+
+Would you be open to a guest post? I can send over some specific topic ideas if you're interested.
+
+Best regards,
+Your Name
+"""
 
 class EmailCreator:
-    def __init__(self):
+    def __init__(self, outreach_template: str = DEFAULT_OUTREACH_TEMPLATE):
         """
-        Initialize the EmailCreator.
+        Initialize the EmailCreator with the outreach template.
+        
+        Args:
+            outreach_template: Static template to append to each personalized message
         """
-        # We'll set the template in create_emails
-        self.outreach_template = None
+        self.outreach_template = outreach_template
     
     def _get_post_pitch(self, url: str) -> Optional[Dict[str, Any]]:
         """
@@ -42,21 +53,16 @@ class EmailCreator:
             logger.error(f"Error getting post pitch for {url}: {str(e)}")
             return None
     
-    def create_emails(self, urls: List[str], site_id: int) -> List[Dict[str, str]]:
+    def create_emails(self, urls: List[str]) -> List[Dict[str, str]]:
         """
         Create personalized emails for a list of URLs.
         
         Args:
             urls: List of target website URLs
-            site_id: Integer ID of the site to use for template generation
             
         Returns:
             List of email objects with subject, body, and recipient email
         """
-        # Create an instance of TemplateMaker and call its create_template method
-        template_maker_instance = template_maker.TemplateMaker()
-        self.outreach_template = template_maker_instance.create_template(site_id)
-        
         emails = []
         
         for url in urls:
@@ -69,7 +75,7 @@ class EmailCreator:
             # Extract necessary information from pitch_data
             try:
                 subject = pitch_data.get("subject", "")
-                personalization = pitch_data.get("body", "")
+                personalization = pitch_data.get("body", "")  # Changed from "personalization" to "body"
                 recipient_email = pitch_data.get("email", "")
                 
                 # Skip if any required field is missing
@@ -105,7 +111,7 @@ def create_outreach_emails(urls: List[str], template: str) -> List[Dict[str, str
     Returns:
         List of email objects with subject, body, and recipient email
     """
-    creator = EmailCreator()
+    creator = EmailCreator(template)
     return creator.create_emails(urls)
 
 
@@ -114,7 +120,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, 
                         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     
-    # Create an instance of EmailCreator
+    # Create an instance of EmailCreator with the default template
     creator = EmailCreator()
     
     # Test URLs
@@ -139,7 +145,7 @@ if __name__ == "__main__":
     
     # Now test the full email creation
     print("\nTesting full email creation:")
-    emails = creator.create_emails(test_urls, 1)
+    emails = creator.create_emails(test_urls)
     
     print(f"\nCreated {len(emails)} emails out of {len(test_urls)} URLs")
     

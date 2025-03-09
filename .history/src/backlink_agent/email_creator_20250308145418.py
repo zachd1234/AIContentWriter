@@ -18,28 +18,20 @@ class EmailCreator:
         # We'll set the template in create_emails
         self.outreach_template = None
     
-    def _get_post_pitch(self, url: str) -> Optional[Dict[str, Any]]:
-        """
-        Call the post pitch API for a single URL.
-        
-        Args:
-            url: The target website URL
-            
-        Returns:
-            Dictionary with API response or None if the request failed
-        """
+    def get_post_pitch(self, prospect):
+        """Get post pitch data from the API."""
         try:
-            # Format the API endpoint with the URL parameter
-            api_endpoint = f"{POST_PITCH_API_URL}email_data_lenient?url={url}"
+            url = prospect.get('url')
+            print(f"Fetching pitch data for URL: {url}")
+            response = requests.get(f"https://post-pitch-fork.onrender.com/email_data_lenient?url={url}")
             
-            response = requests.get(
-                api_endpoint,
-                timeout=60  # Increased timeout as this API might take longer
-            )
-            response.raise_for_status()
-            return response.json()
-        except requests.RequestException as e:
-            logger.error(f"Error getting post pitch for {url}: {str(e)}")
+            if response.status_code == 200:
+                return response.json()
+            else:
+                logging.error(f"Error getting post pitch for {prospect}: {response.status_code} {response.reason} for url: {response.url}")
+                return None
+        except Exception as e:
+            logging.error(f"Exception getting post pitch for {prospect}: {str(e)}")
             return None
     
     def create_emails(self, urls: List[str], site_id: int) -> List[Dict[str, str]]:
@@ -60,7 +52,7 @@ class EmailCreator:
         emails = []
         
         for url in urls:
-            pitch_data = self._get_post_pitch(url)
+            pitch_data = self.get_post_pitch(url)
             
             if not pitch_data or "error" in pitch_data:
                 logger.warning(f"Failed to get pitch data for {url}")
@@ -128,7 +120,7 @@ if __name__ == "__main__":
     
     # First test the individual API call
     print("\nTesting individual API call with mashable.com:")
-    result = creator._get_post_pitch(test_urls[0])
+    result = creator.get_post_pitch(test_urls[0])
     if result:
         print("API call successful!")
         print("Response:")
