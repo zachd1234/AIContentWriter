@@ -330,6 +330,8 @@ class DatabaseService:
             if conn:
                 self.release_connection(conn)
 
+
+
     def delete_urls_by_site_id(self, site_id: int) -> Dict[str, Any]:
         """
         Delete all prospect URLs associated with a specific site ID.
@@ -472,33 +474,32 @@ class DatabaseService:
             if conn:
                 self.release_connection(conn)
 
-    def has_outreach_prospects(self, site_id):
-        """
-        Check if there are any outreach prospects for the given site_id
+def has_outreach_prospects(self, site_id):
+    """
+    Check if there are any outreach prospects for the given site_id
+    
+    Args:
+        site_id (int): The site ID to check
         
-        Args:
-            site_id (int): The site ID to check
-            
-        Returns:
-            bool: True if there are prospects, False otherwise
-        """
-        conn = None
-        try:
-            conn = self.get_connection()
-            cursor = conn.cursor()
-            
-            query = "SELECT COUNT(*) FROM outreach_urls WHERE site_id = %s"
-            cursor.execute(query, (site_id,))
-            
-            count = cursor.fetchone()[0]
-            
-            return count > 0
-        except Exception as e:
-            logger.error(f"Error checking outreach prospects: {str(e)}")
-            return False
-        finally:
-            if conn:
-                self.release_connection(conn)
+    Returns:
+        bool: True if there are prospects, False otherwise
+    """
+    try:
+        connection = self.get_connection()
+        cursor = connection.cursor()
+        
+        query = "SELECT COUNT(*) FROM outreach_prospects WHERE site_id = %s AND status = 'pending'"
+        cursor.execute(query, (site_id,))
+        
+        count = cursor.fetchone()[0]
+        
+        cursor.close()
+        connection.close()
+        
+        return count > 0
+    except Exception as e:
+        self.logger.error(f"Error checking outreach prospects: {str(e)}")
+        return False
 
 # Example usage
 if __name__ == "__main__":

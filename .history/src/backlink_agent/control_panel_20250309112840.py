@@ -179,10 +179,6 @@ class ControlPanel:
         # Return the complete results
         return report
 
-    def has_outreach_prospects(self, site_id):
-        """Check if there are any outreach prospects for the given site_id"""
-        return self.database_service.has_outreach_prospects(site_id)
-
 
 def create_default_control_panel(max_emails: int = 10) -> ControlPanel:
     """
