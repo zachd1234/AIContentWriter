@@ -1,17 +1,10 @@
 import os
-import sys
-
-# Get the absolute path to the project root directory
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
-
-# Add the project root to Python's path if it's not already there
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
-
 from dotenv import load_dotenv
 import vertexai
 from vertexai.generative_models import GenerativeModel, GenerationConfig
-from src.api.sitemap_api import fetch_posts_from_sitemap
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from api.sitemap_api import fetch_posts_from_sitemap
 import json
 import re
 

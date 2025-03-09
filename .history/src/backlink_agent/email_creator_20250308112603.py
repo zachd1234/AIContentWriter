@@ -4,19 +4,17 @@ from typing import List, Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
-# Hard-coded API URL
-POST_PITCH_API_URL = "https://post-pitch-fork.onrender.com/"
-
-# Import the template maker module
-import template_maker
-
 class EmailCreator:
-    def __init__(self):
+    def __init__(self, post_pitch_api_url: str, outreach_template: str):
         """
-        Initialize the EmailCreator.
+        Initialize the EmailCreator with the API URL and outreach template.
+        
+        Args:
+            post_pitch_api_url: URL for the post pitch API
+            outreach_template: Static template to append to each personalized message
         """
-        # We'll set the template in create_emails
-        self.outreach_template = None
+        self.post_pitch_api_url = post_pitch_api_url
+        self.outreach_template = outreach_template
     
     def _get_post_pitch(self, url: str) -> Optional[Dict[str, Any]]:
         """
@@ -30,7 +28,7 @@ class EmailCreator:
         """
         try:
             # Format the API endpoint with the URL parameter
-            api_endpoint = f"{POST_PITCH_API_URL}email_data_lenient?url={url}"
+            api_endpoint = f"{self.post_pitch_api_url}email_data_lenient?url={url}"
             
             response = requests.get(
                 api_endpoint,
@@ -42,21 +40,16 @@ class EmailCreator:
             logger.error(f"Error getting post pitch for {url}: {str(e)}")
             return None
     
-    def create_emails(self, urls: List[str], site_id: int) -> List[Dict[str, str]]:
+    def create_emails(self, urls: List[str]) -> List[Dict[str, str]]:
         """
         Create personalized emails for a list of URLs.
         
         Args:
             urls: List of target website URLs
-            site_id: Integer ID of the site to use for template generation
             
         Returns:
             List of email objects with subject, body, and recipient email
         """
-        # Create an instance of TemplateMaker and call its create_template method
-        template_maker_instance = template_maker.TemplateMaker()
-        self.outreach_template = template_maker_instance.create_template(site_id)
-        
         emails = []
         
         for url in urls:
@@ -69,7 +62,7 @@ class EmailCreator:
             # Extract necessary information from pitch_data
             try:
                 subject = pitch_data.get("subject", "")
-                personalization = pitch_data.get("body", "")
+                personalization = pitch_data.get("personalization", "")
                 recipient_email = pitch_data.get("email", "")
                 
                 # Skip if any required field is missing
@@ -94,58 +87,17 @@ class EmailCreator:
 
 
 # Example usage:
-def create_outreach_emails(urls: List[str], template: str) -> List[Dict[str, str]]:
+def create_outreach_emails(urls: List[str], api_url: str, template: str) -> List[Dict[str, str]]:
     """
     Convenience function to create outreach emails.
     
     Args:
         urls: List of target website URLs
+        api_url: URL for the post pitch API
         template: Static template to append to each personalized message
         
     Returns:
         List of email objects with subject, body, and recipient email
     """
-    creator = EmailCreator()
+    creator = EmailCreator(api_url, template)
     return creator.create_emails(urls)
-
-
-if __name__ == "__main__":
-    # Set up basic logging
-    logging.basicConfig(level=logging.INFO, 
-                        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    
-    # Create an instance of EmailCreator
-    creator = EmailCreator()
-    
-    # Test URLs
-    test_urls = [
-        "https://mashable.com",
-        "https://techcrunch.com",
-        "https://wired.com"
-    ]
-    
-    print(f"Testing email creation with {len(test_urls)} URLs...")
-    
-    # First test the individual API call
-    print("\nTesting individual API call with mashable.com:")
-    result = creator._get_post_pitch(test_urls[0])
-    if result:
-        print("API call successful!")
-        print("Response:")
-        import json
-        print(json.dumps(result, indent=2))
-    else:
-        print("API call failed. Check logs for details.")
-    
-    # Now test the full email creation
-    print("\nTesting full email creation:")
-    emails = creator.create_emails(test_urls, 1)
-    
-    print(f"\nCreated {len(emails)} emails out of {len(test_urls)} URLs")
-    
-    # Print the first email as an example
-    if emails:
-        print("\nExample email:")
-        print(f"To: {emails[0]['email']}")
-        print(f"Subject: {emails[0]['subject']}")
-        print(f"Body:\n{emails[0]['body']}")

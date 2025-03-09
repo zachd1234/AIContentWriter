@@ -55,7 +55,10 @@ class EmailCreator:
         """
         # Create an instance of TemplateMaker and call its create_template method
         template_maker_instance = template_maker.TemplateMaker()
-        self.outreach_template = template_maker_instance.create_template(site_id)
+        self.outreach_template = template_maker_instance.create_template(
+            "gemini_personalized",
+            variables={"site_id": site_id}
+        )
         
         emails = []
         
