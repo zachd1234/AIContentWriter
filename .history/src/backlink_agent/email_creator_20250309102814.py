@@ -1,23 +1,14 @@
 import requests
 import logging
 from typing import List, Dict, Any, Optional
-import os
-import sys
-
-# Get the absolute path to the project root directory
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-
-# Add the project root to Python's path if it's not already there
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
-
-# Now import using the absolute path
-from src.backlink_agent import template_maker
 
 logger = logging.getLogger(__name__)
 
 # Hard-coded API URL
 POST_PITCH_API_URL = "https://post-pitch-fork.onrender.com/"
+
+# Import the template maker module
+from src.backlink_agent import template_maker
 
 class EmailCreator:
     def __init__(self):
