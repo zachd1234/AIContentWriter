@@ -107,7 +107,6 @@ async def run_outreach_campaign(request: OutreachCampaignRequest, x_api_key: str
 
     try:
         control_panel = create_default_control_panel()
-        print("Stats report")
         stats_result = control_panel.send_daily_stats_report()
         print(f"Stats report sent: {stats_result['message']}")
     except Exception as e:
@@ -115,11 +114,11 @@ async def run_outreach_campaign(request: OutreachCampaignRequest, x_api_key: str
 
     try:
         control_panel = create_default_control_panel()
-        #result = control_panel.run_outreach_campaign(request.site_id)
+        result = control_panel.run_outreach_campaign(request.site_id)
         
         return {
             "status": "success",
-            "data": "Outreach campaign run"
+            "data": result
         }
         
     except Exception as e:
@@ -135,6 +134,8 @@ async def setup_outreach(request: OutreachSetupRequest, x_api_key: str = Header(
     """
     try:
         control_panel = create_default_control_panel()
+        stats_result = control_panel.send_daily_stats_report()
+        print(f"Stats report sent: {stats_result['message']}")
         result = control_panel.setup_outreach(request.site_id)
         
         return {
