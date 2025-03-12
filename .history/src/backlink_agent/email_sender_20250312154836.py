@@ -38,16 +38,15 @@ class EmailSender:
         # Validate that we have the necessary credentials
         if not all([self.smtp_server, self.smtp_port, self.username, self.password]):
             print("Warning: Email credentials not fully configured. Email sending may fail.")
-
-
+    
     def send_email(self, 
-              to_email: str, 
-              subject: str, 
-              body: str,
-              cc: Optional[List[str]] = None,
-              bcc: Optional[List[str]] = None,
-              html_body: Optional[str] = None,
-              site_id: Optional[int] = None) -> Dict[str, Any]:
+                  to_email: str, 
+                  subject: str, 
+                  body: str,
+                  cc: Optional[List[str]] = None,
+                  bcc: Optional[List[str]] = None,
+                  html_body: Optional[str] = None,
+                  site_id: Optional[int] = None) -> Dict[str, Any]:
         """
         Send an email with the given details and track it in the database.
         
@@ -67,15 +66,6 @@ class EmailSender:
             return {
                 "success": False,
                 "message": "Email credentials not configured. Set SMTP_SERVER, SMTP_PORT, EMAIL_USERNAME, and EMAIL_PASSWORD."
-            }
-        
-        # Skip sending if no valid email was found
-        if not to_email or '@' not in to_email:
-            print(f"Invalid recipient email address: {to_email}")
-            return {
-                "success": False,
-                "message": f"Invalid recipient email address: {to_email}",
-                "email_id": None
             }
         
         # Generate a deterministic email ID based on subject, recipient, and timestamp
@@ -101,65 +91,16 @@ class EmailSender:
             msg.attach(MIMEText(html_body, 'html'))
         
         try:
-            # More explicit condition with debugging
-            is_ruckquest_email = "@ruckquest.com" in to_email.lower()
-            should_track = not is_ruckquest_email
-            print(f"Email: {to_email}, is_ruckquest_email: {is_ruckquest_email}, should_track: {should_track}")
-            
-            db_service = None
-            
-            if should_track:
-                try:
-                    # Use absolute import with proper path handling
-                    import sys
-                    from pathlib import Path
-                    
-                    # Add the parent directory to sys.path if needed
-                    src_dir = Path(__file__).resolve().parent.parent
-                    if str(src_dir) not in sys.path:
-                        sys.path.append(str(src_dir))
-                    
-                    print(f"Python path: {sys.path}")
-                    
-                    # Import with better error handling
-                    try:
-                        from database_service import DatabaseService
-                        print("Successfully imported DatabaseService")
-                    except ImportError as import_error:
-                        print(f"Error importing DatabaseService: {str(import_error)}")
-                        # Try alternative import paths
-                        try:
-                            from src.database_service import DatabaseService
-                            print("Successfully imported DatabaseService from src")
-                        except ImportError:
-                            print("Failed to import DatabaseService from alternative paths")
-                            raise
-                    
-                    # Create database service with connection testing
-                    try:
-                        db_service = DatabaseService()
-                        # Test the connection
-                        if db_service.get_connection():
-                            print("Database connection successful")
-                        else:
-                            print("Failed to get database connection")
-                    except Exception as conn_error:
-                        print(f"Error connecting to database: {str(conn_error)}")
-                        raise
-                    
-                    # Add email tracking with detailed logging
-                    print(f"Adding email to tracking database: {email_id}, {to_email}")
-                    db_service.add_email_tracking(
-                        email_id=email_id,
-                        recipient=to_email,
-                        subject=subject,
-                        status="pending",
-                        site_id=site_id
-                    )
-                    print(f"Successfully added email to tracking database")
-                except Exception as db_error:
-                    print(f"Error adding email to tracking database: {str(db_error)}")
-                    # Continue with sending the email even if tracking fails
+            # Record the email in database before sending (with pending status)
+            from database_service import DatabaseService
+            db_service = DatabaseService()
+            db_service.add_email_tracking(
+                email_id=email_id,
+                recipient=to_email,
+                subject=subject,
+                status="pending",
+                site_id=site_id
+            )
             
             # Create SMTP session
             server = smtplib.SMTP(self.smtp_server, self.smtp_port)
@@ -183,37 +124,28 @@ class EmailSender:
             # Close connection
             server.quit()
             
-            # Update status to delivered (only for tracked emails)
-            if should_track and db_service:
-                try:
-                    print(f"Updating email status to delivered: {email_id}")
-                    db_service.update_email_status(email_id, "delivered")
-                    print("Successfully updated email status")
-                    db_service.close()
-                except Exception as update_error:
-                    print(f"Error updating email status: {str(update_error)}")
+            # Update status to delivered
+            db_service.update_email_status(email_id, "delivered")
+            db_service.close()
             
             return {
                 "success": True,
                 "message": f"Email sent successfully to {to_email}",
-                "email_id": email_id if should_track else None  # Return the email_id for reference
+                "email_id": email_id  # Return the email_id for reference
             }
             
         except Exception as e:
-            print(f"Error sending email: {str(e)}")
-            # Update status to bounced if sending failed (only for tracked emails)
-            if should_track and db_service:
-                try:
-                    print(f"Updating email status to bounced: {email_id}")
-                    db_service.update_email_status(email_id, "bounced", str(e))
-                    db_service.close()
-                except Exception as update_error:
-                    print(f"Error updating bounced status: {str(update_error)}")
+            # Update status to bounced if sending failed
+            try:
+                db_service.update_email_status(email_id, "bounced", str(e))
+                db_service.close()
+            except:
+                pass  # If we can't update the status, just continue
             
             return {
                 "success": False,
                 "message": f"Failed to send email: {str(e)}",
-                "email_id": email_id if should_track else None  # Return the email_id for reference
+                "email_id": email_id  # Return the email_id for reference
             }
 
     def send_backlink_outreach_email(self, 
@@ -234,11 +166,10 @@ class EmailSender:
             Dictionary with status and message
         """
         # Skip sending if no valid email was found
-        if not to_email or '@' not in to_email:
-            print(f"Invalid recipient email address: {to_email}")
+        if to_email == "NO EMAIL FOUND" or not to_email:
             return {
                 "success": False,
-                "message": f"Invalid recipient email address: {to_email}",
+                "message": "No valid email address found",
                 "email_id": None
             }
         

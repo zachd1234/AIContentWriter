@@ -115,8 +115,7 @@ class ControlPanel:
                 result = self.email_sender.send_backlink_outreach_email(
                     to_email=email["email"],
                     subject=email["subject"],
-                    body=email["body"],
-                    site_id=site_id
+                    body=email["body"]
                 )
                 
                 if result.get("success", False):
@@ -183,42 +182,6 @@ class ControlPanel:
     def has_outreach_prospects(self, site_id):
         """Check if there are any outreach prospects for the given site_id"""
         return self.database_service.has_outreach_prospects(site_id)
-
-    def send_daily_stats_report(self, admin_email: str = "ruckquest@gmail.com") -> Dict[str, Any]:
-        """
-        Send a daily statistics report email.
-        
-        Args:
-            admin_email: Email address to send the report to
-            
-        Returns:
-            Dictionary with status and message
-        """
-        try:
-            from src.backlink_agent.email_sender import EmailSender
-            
-            # Create email sender
-            email_sender = EmailSender()
-            
-            # Send the report
-            result = email_sender.send_stats_report(
-                to_email=admin_email,
-                site_id=None,  # Send stats for all sites
-                days_to_show=5,
-                include_recent_emails=True
-            )
-            
-            return {
-                "success": result.get("success", False),
-                "message": f"Stats report sent to {admin_email}",
-                "details": result
-            }
-            
-        except Exception as e:
-            return {
-                "success": False,
-                "message": f"Failed to send stats report: {str(e)}"
-            }
 
 
 def create_default_control_panel(max_emails: int = 10) -> ControlPanel:
