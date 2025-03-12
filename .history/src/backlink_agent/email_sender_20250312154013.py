@@ -8,8 +8,6 @@ from datetime import datetime
 import uuid
 import hashlib
 import time
-import sys
-from pathlib import Path
 
 # Load environment variables from .env file
 load_dotenv()
@@ -38,16 +36,15 @@ class EmailSender:
         # Validate that we have the necessary credentials
         if not all([self.smtp_server, self.smtp_port, self.username, self.password]):
             print("Warning: Email credentials not fully configured. Email sending may fail.")
-
-
+    
     def send_email(self, 
-              to_email: str, 
-              subject: str, 
-              body: str,
-              cc: Optional[List[str]] = None,
-              bcc: Optional[List[str]] = None,
-              html_body: Optional[str] = None,
-              site_id: Optional[int] = None) -> Dict[str, Any]:
+                  to_email: str, 
+                  subject: str, 
+                  body: str,
+                  cc: Optional[List[str]] = None,
+                  bcc: Optional[List[str]] = None,
+                  html_body: Optional[str] = None,
+                  site_id: Optional[int] = None) -> Dict[str, Any]:
         """
         Send an email with the given details and track it in the database.
         
@@ -67,15 +64,6 @@ class EmailSender:
             return {
                 "success": False,
                 "message": "Email credentials not configured. Set SMTP_SERVER, SMTP_PORT, EMAIL_USERNAME, and EMAIL_PASSWORD."
-            }
-        
-        # Skip sending if no valid email was found
-        if not to_email or '@' not in to_email:
-            print(f"Invalid recipient email address: {to_email}")
-            return {
-                "success": False,
-                "message": f"Invalid recipient email address: {to_email}",
-                "email_id": None
             }
         
         # Generate a deterministic email ID based on subject, recipient, and timestamp
@@ -101,65 +89,16 @@ class EmailSender:
             msg.attach(MIMEText(html_body, 'html'))
         
         try:
-            # More explicit condition with debugging
-            is_ruckquest_email = "@ruckquest.com" in to_email.lower()
-            should_track = not is_ruckquest_email
-            print(f"Email: {to_email}, is_ruckquest_email: {is_ruckquest_email}, should_track: {should_track}")
-            
-            db_service = None
-            
-            if should_track:
-                try:
-                    # Use absolute import with proper path handling
-                    import sys
-                    from pathlib import Path
-                    
-                    # Add the parent directory to sys.path if needed
-                    src_dir = Path(__file__).resolve().parent.parent
-                    if str(src_dir) not in sys.path:
-                        sys.path.append(str(src_dir))
-                    
-                    print(f"Python path: {sys.path}")
-                    
-                    # Import with better error handling
-                    try:
-                        from database_service import DatabaseService
-                        print("Successfully imported DatabaseService")
-                    except ImportError as import_error:
-                        print(f"Error importing DatabaseService: {str(import_error)}")
-                        # Try alternative import paths
-                        try:
-                            from src.database_service import DatabaseService
-                            print("Successfully imported DatabaseService from src")
-                        except ImportError:
-                            print("Failed to import DatabaseService from alternative paths")
-                            raise
-                    
-                    # Create database service with connection testing
-                    try:
-                        db_service = DatabaseService()
-                        # Test the connection
-                        if db_service.get_connection():
-                            print("Database connection successful")
-                        else:
-                            print("Failed to get database connection")
-                    except Exception as conn_error:
-                        print(f"Error connecting to database: {str(conn_error)}")
-                        raise
-                    
-                    # Add email tracking with detailed logging
-                    print(f"Adding email to tracking database: {email_id}, {to_email}")
-                    db_service.add_email_tracking(
-                        email_id=email_id,
-                        recipient=to_email,
-                        subject=subject,
-                        status="pending",
-                        site_id=site_id
-                    )
-                    print(f"Successfully added email to tracking database")
-                except Exception as db_error:
-                    print(f"Error adding email to tracking database: {str(db_error)}")
-                    # Continue with sending the email even if tracking fails
+            # Record the email in database before sending (with pending status)
+            from database_service import DatabaseService
+            db_service = DatabaseService()
+            db_service.add_email_tracking(
+                email_id=email_id,
+                recipient=to_email,
+                subject=subject,
+                status="pending",
+                site_id=site_id
+            )
             
             # Create SMTP session
             server = smtplib.SMTP(self.smtp_server, self.smtp_port)
@@ -183,37 +122,28 @@ class EmailSender:
             # Close connection
             server.quit()
             
-            # Update status to delivered (only for tracked emails)
-            if should_track and db_service:
-                try:
-                    print(f"Updating email status to delivered: {email_id}")
-                    db_service.update_email_status(email_id, "delivered")
-                    print("Successfully updated email status")
-                    db_service.close()
-                except Exception as update_error:
-                    print(f"Error updating email status: {str(update_error)}")
+            # Update status to delivered
+            db_service.update_email_status(email_id, "delivered")
+            db_service.close()
             
             return {
                 "success": True,
                 "message": f"Email sent successfully to {to_email}",
-                "email_id": email_id if should_track else None  # Return the email_id for reference
+                "email_id": email_id  # Return the email_id for reference
             }
             
         except Exception as e:
-            print(f"Error sending email: {str(e)}")
-            # Update status to bounced if sending failed (only for tracked emails)
-            if should_track and db_service:
-                try:
-                    print(f"Updating email status to bounced: {email_id}")
-                    db_service.update_email_status(email_id, "bounced", str(e))
-                    db_service.close()
-                except Exception as update_error:
-                    print(f"Error updating bounced status: {str(update_error)}")
+            # Update status to bounced if sending failed
+            try:
+                db_service.update_email_status(email_id, "bounced", str(e))
+                db_service.close()
+            except:
+                pass  # If we can't update the status, just continue
             
             return {
                 "success": False,
                 "message": f"Failed to send email: {str(e)}",
-                "email_id": email_id if should_track else None  # Return the email_id for reference
+                "email_id": email_id  # Return the email_id for reference
             }
 
     def send_backlink_outreach_email(self, 
@@ -234,11 +164,10 @@ class EmailSender:
             Dictionary with status and message
         """
         # Skip sending if no valid email was found
-        if not to_email or '@' not in to_email:
-            print(f"Invalid recipient email address: {to_email}")
+        if to_email == "NO EMAIL FOUND" or not to_email:
             return {
                 "success": False,
-                "message": f"Invalid recipient email address: {to_email}",
+                "message": "No valid email address found",
                 "email_id": None
             }
         
@@ -253,9 +182,7 @@ class EmailSender:
     def send_stats_report(self, 
                          to_email: str,
                          site_id: Optional[int] = None,
-                         days_to_show: int = 5,
-                         include_recent_emails: bool = True,
-                         recent_email_limit: int = 10) -> Dict[str, Any]:
+                         days_to_show: int = 5) -> Dict[str, Any]:
         """
         Send a daily email report with key email statistics.
         
@@ -263,27 +190,14 @@ class EmailSender:
             to_email: Recipient email address
             site_id: Optional site ID to filter statistics by
             days_to_show: Number of recent days to display in the report
-            include_recent_emails: Whether to include a table of recent emails
-            recent_email_limit: Maximum number of recent emails to include
             
         Returns:
             Dictionary with status and message
         """
-        # Get statistics from database - use proper import path
-        # Add the parent directory to sys.path if needed
-        src_dir = Path(__file__).resolve().parent.parent
-        if str(src_dir) not in sys.path:
-            sys.path.append(str(src_dir))
-        
+        # Get statistics from database
         from database_service import DatabaseService
         db_service = DatabaseService()
         stats_data = db_service.get_email_stats(site_id=site_id, days=days_to_show)
-        
-        # Get recent emails if requested
-        recent_emails = []
-        if include_recent_emails:
-            recent_emails = db_service.get_recent_emails(site_id=site_id, limit=recent_email_limit)
-        
         db_service.close()
         
         # Set subject line
@@ -338,37 +252,13 @@ Date: {date_str}
   Bounce Rate: {daily_bounce_rate:.2f}%
 """
         
-        # Add recent emails if available
-        if recent_emails:
-            body += f"""
-RECENT EMAILS (Last {len(recent_emails)}):
------------------
-"""
-            for email in recent_emails:
-                recipient = email['recipient']
-                subject = email['subject']
-                status = email['status']
-                sent_at = email['sent_at']
-                
-                body += f"""
-Email ID: {email['email_id']}
-  Recipient: {recipient}
-  Subject: {subject}
-  Status: {status}
-  Sent At: {sent_at}
-"""
-                if email.get('reply_received_at'):
-                    body += f"  Reply Received At: {email['reply_received_at']}\n"
-                if email.get('bounce_reason'):
-                    body += f"  Bounce Reason: {email['bounce_reason']}\n"
-        
         # Create HTML version
         html_body = f"""
         <html>
         <head>
             <style>
                 body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
-                .container {{ max-width: 800px; margin: 0 auto; padding: 20px; }}
+                .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
                 h1 {{ color: #2c3e50; font-size: 24px; margin-bottom: 20px; }}
                 h2 {{ color: #3498db; font-size: 20px; margin-top: 30px; }}
                 .summary {{ background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin-bottom: 20px; }}
@@ -379,12 +269,6 @@ Email ID: {email['email_id']}
                 tr:hover {{ background-color: #f5f5f5; }}
                 .highlight {{ font-weight: bold; color: #2980b9; }}
                 .warning {{ font-weight: bold; color: #e74c3c; }}
-                .status-delivered {{ color: #27ae60; }}
-                .status-replied {{ color: #2980b9; font-weight: bold; }}
-                .status-bounced {{ color: #e74c3c; }}
-                .status-pending {{ color: #f39c12; }}
-                .email-table {{ font-size: 14px; }}
-                .email-table th {{ font-size: 13px; }}
             </style>
         </head>
         <body>
@@ -437,73 +321,9 @@ Email ID: {email['email_id']}
                     </tr>
             """
         
-        # Close the daily stats table
-        html_body += """
-                </table>
-        """
-        
-        # Add recent emails table if available
-        if recent_emails:
-            html_body += f"""
-                <h2>Recent Emails (Last {len(recent_emails)})</h2>
-                <table class="email-table">
-                    <tr>
-                        <th>Recipient</th>
-                        <th>Subject</th>
-                        <th>Status</th>
-                        <th>Sent At</th>
-                        <th>Reply/Bounce</th>
-                    </tr>
-        """
-            
-            for email in recent_emails:
-                recipient = email['recipient']
-                # Truncate subject if too long
-                subject = email['subject']
-                if len(subject) > 40:
-                    subject = subject[:37] + "..."
-                
-                status = email['status']
-                sent_at = email['sent_at']
-                
-                # Determine status class for styling
-                status_class = ""
-                if status == "delivered":
-                    status_class = "status-delivered"
-                elif status == "replied":
-                    status_class = "status-replied"
-                elif status == "bounced":
-                    status_class = "status-bounced"
-                elif status == "pending":
-                    status_class = "status-pending"
-                
-                # Determine additional info (reply or bounce)
-                additional_info = ""
-                if email.get('reply_received_at'):
-                    additional_info = f"Replied: {email['reply_received_at']}"
-                elif email.get('bounce_reason'):
-                    bounce_reason = email['bounce_reason']
-                    if len(bounce_reason) > 40:
-                        bounce_reason = bounce_reason[:37] + "..."
-                    additional_info = f"Reason: {bounce_reason}"
-                
-                html_body += f"""
-                    <tr>
-                        <td>{recipient}</td>
-                        <td>{subject}</td>
-                        <td class="{status_class}">{status}</td>
-                        <td>{sent_at}</td>
-                        <td>{additional_info}</td>
-                    </tr>
-                """
-            
-            # Close the recent emails table
-            html_body += """
-                </table>
-            """
-        
         # Close the HTML
         html_body += """
+                </table>
             </div>
         </body>
         </html>
@@ -512,7 +332,7 @@ Email ID: {email['email_id']}
         # Send the email with both plain text and HTML versions
         return self.send_email(
             to_email=to_email,
-            subject="Backlink Email Report",
+            subject=subject,
             body=body,
             html_body=html_body
         )
