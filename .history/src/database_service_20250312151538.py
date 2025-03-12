@@ -505,8 +505,7 @@ class DatabaseService:
                           email_id: str, 
                           recipient: str, 
                           subject: str, 
-                          status: str = "pending",
-                          site_id: Optional[int] = None):
+                          status: str = "pending"):
         """
         Add a new email to the tracking database.
         
@@ -515,7 +514,6 @@ class DatabaseService:
             recipient: Recipient email address
             subject: Email subject
             status: Initial status (default: pending)
-            site_id: Optional site ID for tracking purposes
         """
         conn = None
         try:
@@ -525,8 +523,8 @@ class DatabaseService:
             now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             
             cursor.execute(
-                "INSERT INTO email_tracking (email_id, recipient, subject, sent_at, status, updated_at, site_id) VALUES (%s, %s, %s, %s, %s, %s, %s)",
-                (email_id, recipient, subject, now, status, now, site_id)
+                "INSERT INTO email_tracking (email_id, recipient, subject, sent_at, status, updated_at) VALUES (%s, %s, %s, %s, %s, %s)",
+                (email_id, recipient, subject, now, status, now)
             )
             
             conn.commit()
@@ -582,12 +580,11 @@ class DatabaseService:
             if conn:
                 self.release_connection(conn)
 
-    def get_recent_emails(self, site_id: Optional[int] = None, limit: int = 10) -> List[Dict[str, Any]]:
+    def get_recent_emails(self, limit: int = 10) -> List[Dict[str, Any]]:
         """
         Get the most recent emails from the tracking database.
         
         Args:
-            site_id: Optional site ID to filter by
             limit: Maximum number of emails to return
             
         Returns:
@@ -598,18 +595,10 @@ class DatabaseService:
             conn = self.get_connection()
             cursor = conn.cursor(dictionary=True)  # Return results as dictionaries
             
-            if site_id is not None:
-                # Filter by site_id
-                cursor.execute(
-                    "SELECT email_id, recipient, subject, sent_at, status, updated_at, reply_received_at, bounce_reason, site_id FROM email_tracking WHERE site_id = %s ORDER BY sent_at DESC LIMIT %s",
-                    (site_id, limit)
-                )
-            else:
-                # Get all emails
-                cursor.execute(
-                    "SELECT email_id, recipient, subject, sent_at, status, updated_at, reply_received_at, bounce_reason, site_id FROM email_tracking ORDER BY sent_at DESC LIMIT %s",
-                    (limit,)
-                )
+            cursor.execute(
+                "SELECT email_id, recipient, subject, sent_at, status, updated_at, reply_received_at, bounce_reason FROM email_tracking ORDER BY sent_at DESC LIMIT %s",
+                (limit,)
+            )
             
             results = cursor.fetchall()
             emails = []
@@ -630,12 +619,11 @@ class DatabaseService:
             if conn:
                 self.release_connection(conn)
 
-    def get_email_stats(self, site_id: Optional[int] = None, days: int = 7) -> Dict[str, Any]:
+    def get_email_stats(self, days: int = 7) -> Dict[str, Any]:
         """
         Get email statistics for the specified number of days.
         
         Args:
-            site_id: Optional site ID to filter by
             days: Number of days to include in the statistics
             
         Returns:
@@ -650,10 +638,6 @@ class DatabaseService:
             end_date = datetime.now()
             start_date = end_date - timedelta(days=days)
             
-            # Prepare the site_id filter condition
-            site_filter = "AND site_id = %s" if site_id is not None else ""
-            site_params = (site_id,) if site_id is not None else ()
-            
             # Get daily stats for each day in the range
             daily_stats = []
             
@@ -663,119 +647,61 @@ class DatabaseService:
                 day_end = day_date.replace(hour=23, minute=59, second=59).strftime('%Y-%m-%d %H:%M:%S')
                 
                 # Count sent emails for this day
-                if site_id is not None:
-                    cursor.execute(
-                        f"SELECT COUNT(*) as sent FROM email_tracking WHERE sent_at BETWEEN %s AND %s {site_filter}",
-                        (day_start, day_end) + site_params
-                    )
-                else:
-                    cursor.execute(
-                        "SELECT COUNT(*) as sent FROM email_tracking WHERE sent_at BETWEEN %s AND %s",
-                        (day_start, day_end)
-                    )
+                cursor.execute(
+                    "SELECT COUNT(*) as sent FROM email_tracking WHERE sent_at BETWEEN %s AND %s",
+                    (day_start, day_end)
+                )
                 sent_result = cursor.fetchone()
                 sent = sent_result['sent'] if sent_result else 0
                 
                 # Count delivered emails for this day
-                if site_id is not None:
-                    cursor.execute(
-                        f"SELECT COUNT(*) as delivered FROM email_tracking WHERE status = 'delivered' AND sent_at BETWEEN %s AND %s {site_filter}",
-                        (day_start, day_end) + site_params
-                    )
-                else:
-                    cursor.execute(
-                        "SELECT COUNT(*) as delivered FROM email_tracking WHERE status = 'delivered' AND sent_at BETWEEN %s AND %s",
-                        (day_start, day_end)
-                    )
+                cursor.execute(
+                    "SELECT COUNT(*) as delivered FROM email_tracking WHERE status = 'delivered' AND sent_at BETWEEN %s AND %s",
+                    (day_start, day_end)
+                )
                 delivered_result = cursor.fetchone()
                 delivered = delivered_result['delivered'] if delivered_result else 0
                 
                 # Count replied emails for this day
-                if site_id is not None:
-                    cursor.execute(
-                        f"SELECT COUNT(*) as replied FROM email_tracking WHERE status = 'replied' AND sent_at BETWEEN %s AND %s {site_filter}",
-                        (day_start, day_end) + site_params
-                    )
-                else:
-                    cursor.execute(
-                        "SELECT COUNT(*) as replied FROM email_tracking WHERE status = 'replied' AND sent_at BETWEEN %s AND %s",
-                        (day_start, day_end)
-                    )
+                cursor.execute(
+                    "SELECT COUNT(*) as replied FROM email_tracking WHERE status = 'replied' AND sent_at BETWEEN %s AND %s",
+                    (day_start, day_end)
+                )
                 replied_result = cursor.fetchone()
                 replied = replied_result['replied'] if replied_result else 0
-                
-                # Count bounced emails for this day
-                if site_id is not None:
-                    cursor.execute(
-                        f"SELECT COUNT(*) as bounced FROM email_tracking WHERE status = 'bounced' AND sent_at BETWEEN %s AND %s {site_filter}",
-                        (day_start, day_end) + site_params
-                    )
-                else:
-                    cursor.execute(
-                        "SELECT COUNT(*) as bounced FROM email_tracking WHERE status = 'bounced' AND sent_at BETWEEN %s AND %s",
-                        (day_start, day_end)
-                    )
-                bounced_result = cursor.fetchone()
-                bounced = bounced_result['bounced'] if bounced_result else 0
-                
-                # Calculate rates
-                daily_reply_rate = (replied / delivered * 100) if delivered > 0 else 0
-                daily_bounce_rate = (bounced / sent * 100) if sent > 0 else 0
                 
                 daily_stats.append({
                     'date': day_date.strftime('%Y-%m-%d'),
                     'sent': sent,
                     'delivered': delivered,
-                    'replied': replied,
-                    'bounced': bounced,
-                    'reply_rate': daily_reply_rate,
-                    'bounce_rate': daily_bounce_rate
+                    'replied': replied
                 })
             
             # Reverse the list so it's in chronological order
             daily_stats.reverse()
             
             # Get overall totals
-            if site_id is not None:
-                cursor.execute(f"SELECT COUNT(*) as total FROM email_tracking WHERE site_id = %s", (site_id,))
-            else:
-                cursor.execute("SELECT COUNT(*) as total FROM email_tracking")
+            cursor.execute("SELECT COUNT(*) as total FROM email_tracking")
             total_sent_result = cursor.fetchone()
             total_sent = total_sent_result['total'] if total_sent_result else 0
             
-            if site_id is not None:
-                cursor.execute(f"SELECT COUNT(*) as total FROM email_tracking WHERE status = 'delivered' AND site_id = %s", (site_id,))
-            else:
-                cursor.execute("SELECT COUNT(*) as total FROM email_tracking WHERE status = 'delivered'")
+            cursor.execute("SELECT COUNT(*) as total FROM email_tracking WHERE status = 'delivered'")
             total_delivered_result = cursor.fetchone()
             total_delivered = total_delivered_result['total'] if total_delivered_result else 0
             
-            if site_id is not None:
-                cursor.execute(f"SELECT COUNT(*) as total FROM email_tracking WHERE status = 'replied' AND site_id = %s", (site_id,))
-            else:
-                cursor.execute("SELECT COUNT(*) as total FROM email_tracking WHERE status = 'replied'")
+            cursor.execute("SELECT COUNT(*) as total FROM email_tracking WHERE status = 'replied'")
             total_replied_result = cursor.fetchone()
             total_replied = total_replied_result['total'] if total_replied_result else 0
             
-            if site_id is not None:
-                cursor.execute(f"SELECT COUNT(*) as total FROM email_tracking WHERE status = 'bounced' AND site_id = %s", (site_id,))
-            else:
-                cursor.execute("SELECT COUNT(*) as total FROM email_tracking WHERE status = 'bounced'")
-            total_bounced_result = cursor.fetchone()
-            total_bounced = total_bounced_result['total'] if total_bounced_result else 0
-            
-            # Calculate overall rates
+            # Calculate reply rate
             reply_rate = (total_replied / total_delivered * 100) if total_delivered > 0 else 0
-            bounce_rate = (total_bounced / total_sent * 100) if total_sent > 0 else 0
             
             return {
                 'daily_stats': daily_stats,
                 'total_sent': total_sent,
                 'total_delivered': total_delivered,
                 'total_replied': total_replied,
-                'total_bounced': total_bounced,
-                'reply_rate': reply_rate,
-                'bounce_rate': bounce_rate
+                'cumulative_reply_rate': reply_rate
             }
             
         except Exception as e:
@@ -785,67 +711,8 @@ class DatabaseService:
                 'total_sent': 0,
                 'total_delivered': 0,
                 'total_replied': 0,
-                'total_bounced': 0,
-                'reply_rate': 0,
-                'bounce_rate': 0
+                'cumulative_reply_rate': 0
             }
-        finally:
-            if conn:
-                self.release_connection(conn)
-
-    def get_all_email_tracking(self, site_id: Optional[int] = None) -> List[Dict[str, Any]]:
-        """
-        Get all records from the email_tracking table.
-        
-        Args:
-            site_id: Optional site ID to filter by
-            
-        Returns:
-            List of dictionaries containing all email tracking data
-        """
-        conn = None
-        try:
-            conn = self.get_connection()
-            cursor = conn.cursor(dictionary=True)  # Return results as dictionaries
-            
-            if site_id is not None:
-                # Filter by site_id
-                cursor.execute(
-                    """
-                    SELECT email_id, recipient, subject, sent_at, status, updated_at, 
-                           reply_received_at, bounce_reason, site_id 
-                    FROM email_tracking 
-                    WHERE site_id = %s 
-                    ORDER BY sent_at DESC
-                    """,
-                    (site_id,)
-                )
-            else:
-                # Get all emails
-                cursor.execute(
-                    """
-                    SELECT email_id, recipient, subject, sent_at, status, updated_at, 
-                           reply_received_at, bounce_reason, site_id 
-                    FROM email_tracking 
-                    ORDER BY sent_at DESC
-                    """
-                )
-            
-            results = cursor.fetchall()
-            emails = []
-            
-            for row in results:
-                # Convert datetime objects to strings if needed
-                for key, value in row.items():
-                    if isinstance(value, datetime):
-                        row[key] = value.strftime('%Y-%m-%d %H:%M:%S')
-                emails.append(row)
-            
-            return emails
-            
-        except Exception as e:
-            logger.error(f"Error retrieving all email tracking data: {str(e)}")
-            return []
         finally:
             if conn:
                 self.release_connection(conn)
@@ -858,121 +725,8 @@ if __name__ == "__main__":
     
     # Create database service using the environment variable
     db_service = DatabaseService()  # Will use os.environ.get("DATABASE_URL")
-    
-    import uuid
-    from datetime import datetime, timedelta
-    
-    print("\n===== TESTING EMAIL TRACKING METHODS =====\n")
-    
-    # 1. Test adding an email to tracking
-    print("1. ADDING TEST EMAIL TO TRACKING")
-    print("-" * 50)
-    
-    email_id = str(uuid.uuid4())
-    recipient = "test@example.com"
-    subject = "Test Email " + datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    
-    print(f"Adding email with ID: {email_id}")
-    print(f"Recipient: {recipient}")
-    print(f"Subject: {subject}")
-    
-    db_service.add_email_tracking(
-        email_id=email_id,
-        recipient=recipient,
-        subject=subject,
-        status="pending"
-    )
-    print("✓ Email added to tracking database")
-    print()
-    
-    # 2. Test updating email status
-    print("2. UPDATING EMAIL STATUS")
-    print("-" * 50)
-    
-    # Update the email we just added
-    new_status = "delivered"
-    print(f"Updating email {email_id} to status: {new_status}")
-    
-    db_service.update_email_status(
-        email_id=email_id,
-        status=new_status
-    )
-    print("✓ Email status updated")
-    
-    # Update to replied status
-    new_status = "replied"
-    print(f"Updating email {email_id} to status: {new_status}")
-    
-    db_service.update_email_status(
-        email_id=email_id,
-        status=new_status
-    )
-    print("✓ Email status updated to replied")
-    print()
-    
-    # 3. Test getting recent emails
-    print("3. RETRIEVING RECENT EMAILS")
-    print("-" * 50)
-    
-    emails = db_service.get_recent_emails(site_id=2, limit=5)
-    
-    print(f"Retrieved {len(emails)} recent emails:")
-    print("-" * 80)
-    print(f"{'Email ID':<36} | {'Recipient':<20} | {'Subject':<25} | {'Status':<10} | {'Sent At'}")
-    print("-" * 80)
-    
-    for email in emails:
-        email_id_display = email['email_id']
-        recipient = email['recipient'][:17] + "..." if len(email['recipient']) > 20 else email['recipient']
-        subject = email['subject'][:22] + "..." if len(email['subject']) > 25 else email['subject']
-        status = email['status']
-        sent_at = email['sent_at']
-        
-        print(f"{email_id_display} | {recipient:<20} | {subject:<25} | {status:<10} | {sent_at}")
-    print()
-    
-    # 4. Test getting email statistics
-    print("4. GENERATING EMAIL STATISTICS")
-    print("-" * 50)
-    
-    # Get stats for the last 7 days
-    stats = db_service.get_email_stats(site_id=2, days=7)
-    
-    print("Email Statistics Summary:")
-    print(f"Total Sent: {stats['total_sent']}")
-    print(f"Total Delivered: {stats['total_delivered']}")
-    print(f"Total Replied: {stats['total_replied']}")
-    print(f"Total Bounced: {stats['total_bounced']}")
-    print(f"Cumulative Reply Rate: {stats['reply_rate']:.2f}%")
-    print(f"Cumulative Bounce Rate: {stats['bounce_rate']:.2f}%")
-    
-    print("\nDaily Statistics:")
-    print("-" * 60)
-    print(f"{'Date':<12} | {'Sent':<6} | {'Delivered':<10} | {'Replied':<8} | {'Bounced':<8} | {'Reply Rate'} | {'Bounce Rate'}")
-    print("-" * 60)
-    
-    for day in stats['daily_stats']:
-        date = day['date']
-        sent = day['sent']
-        delivered = day['delivered']
-        replied = day['replied']
-        bounced = day['bounced']
-        reply_rate = (replied / delivered * 100) if delivered > 0 else 0
-        bounce_rate = (bounced / sent * 100) if sent > 0 else 0
-        
-        print(f"{date:<12} | {sent:<6} | {delivered:<10} | {replied:<8} | {bounced:<8} | {reply_rate:.2f}% | {bounce_rate:.2f}%")
-    print()
-    
-    # 5. Test existing outreach prospects functionality
-    print("5. CHECKING OUTREACH PROSPECTS")
-    print("-" * 50)
-    
-    site_id = 2  # Using a default site ID
-    has_prospects = db_service.has_outreach_prospects(site_id)
-    print(f"Site ID {site_id} has outreach prospects: {has_prospects}")
-    print()
+
+    print(db_service.has_outreach_prospects(2))
     
     # Close connections when done
-    db_service.close()
-    print("✓ Database connections closed")
-    print("\n===== ALL TESTS COMPLETED =====") 
+    db_service.close() 

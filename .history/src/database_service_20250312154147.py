@@ -704,32 +704,11 @@ class DatabaseService:
                 replied_result = cursor.fetchone()
                 replied = replied_result['replied'] if replied_result else 0
                 
-                # Count bounced emails for this day
-                if site_id is not None:
-                    cursor.execute(
-                        f"SELECT COUNT(*) as bounced FROM email_tracking WHERE status = 'bounced' AND sent_at BETWEEN %s AND %s {site_filter}",
-                        (day_start, day_end) + site_params
-                    )
-                else:
-                    cursor.execute(
-                        "SELECT COUNT(*) as bounced FROM email_tracking WHERE status = 'bounced' AND sent_at BETWEEN %s AND %s",
-                        (day_start, day_end)
-                    )
-                bounced_result = cursor.fetchone()
-                bounced = bounced_result['bounced'] if bounced_result else 0
-                
-                # Calculate rates
-                daily_reply_rate = (replied / delivered * 100) if delivered > 0 else 0
-                daily_bounce_rate = (bounced / sent * 100) if sent > 0 else 0
-                
                 daily_stats.append({
                     'date': day_date.strftime('%Y-%m-%d'),
                     'sent': sent,
                     'delivered': delivered,
-                    'replied': replied,
-                    'bounced': bounced,
-                    'reply_rate': daily_reply_rate,
-                    'bounce_rate': daily_bounce_rate
+                    'replied': replied
                 })
             
             # Reverse the list so it's in chronological order
@@ -757,25 +736,15 @@ class DatabaseService:
             total_replied_result = cursor.fetchone()
             total_replied = total_replied_result['total'] if total_replied_result else 0
             
-            if site_id is not None:
-                cursor.execute(f"SELECT COUNT(*) as total FROM email_tracking WHERE status = 'bounced' AND site_id = %s", (site_id,))
-            else:
-                cursor.execute("SELECT COUNT(*) as total FROM email_tracking WHERE status = 'bounced'")
-            total_bounced_result = cursor.fetchone()
-            total_bounced = total_bounced_result['total'] if total_bounced_result else 0
-            
-            # Calculate overall rates
+            # Calculate reply rate
             reply_rate = (total_replied / total_delivered * 100) if total_delivered > 0 else 0
-            bounce_rate = (total_bounced / total_sent * 100) if total_sent > 0 else 0
             
             return {
                 'daily_stats': daily_stats,
                 'total_sent': total_sent,
                 'total_delivered': total_delivered,
                 'total_replied': total_replied,
-                'total_bounced': total_bounced,
-                'reply_rate': reply_rate,
-                'bounce_rate': bounce_rate
+                'cumulative_reply_rate': reply_rate
             }
             
         except Exception as e:
@@ -785,9 +754,7 @@ class DatabaseService:
                 'total_sent': 0,
                 'total_delivered': 0,
                 'total_replied': 0,
-                'total_bounced': 0,
-                'reply_rate': 0,
-                'bounce_rate': 0
+                'cumulative_reply_rate': 0
             }
         finally:
             if conn:
@@ -942,13 +909,11 @@ if __name__ == "__main__":
     print(f"Total Sent: {stats['total_sent']}")
     print(f"Total Delivered: {stats['total_delivered']}")
     print(f"Total Replied: {stats['total_replied']}")
-    print(f"Total Bounced: {stats['total_bounced']}")
-    print(f"Cumulative Reply Rate: {stats['reply_rate']:.2f}%")
-    print(f"Cumulative Bounce Rate: {stats['bounce_rate']:.2f}%")
+    print(f"Cumulative Reply Rate: {stats['cumulative_reply_rate']:.2f}%")
     
     print("\nDaily Statistics:")
     print("-" * 60)
-    print(f"{'Date':<12} | {'Sent':<6} | {'Delivered':<10} | {'Replied':<8} | {'Bounced':<8} | {'Reply Rate'} | {'Bounce Rate'}")
+    print(f"{'Date':<12} | {'Sent':<6} | {'Delivered':<10} | {'Replied':<8} | {'Reply Rate'}")
     print("-" * 60)
     
     for day in stats['daily_stats']:
@@ -956,11 +921,9 @@ if __name__ == "__main__":
         sent = day['sent']
         delivered = day['delivered']
         replied = day['replied']
-        bounced = day['bounced']
         reply_rate = (replied / delivered * 100) if delivered > 0 else 0
-        bounce_rate = (bounced / sent * 100) if sent > 0 else 0
         
-        print(f"{date:<12} | {sent:<6} | {delivered:<10} | {replied:<8} | {bounced:<8} | {reply_rate:.2f}% | {bounce_rate:.2f}%")
+        print(f"{date:<12} | {sent:<6} | {delivered:<10} | {replied:<8} | {reply_rate:.2f}%")
     print()
     
     # 5. Test existing outreach prospects functionality
