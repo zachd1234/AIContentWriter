@@ -127,8 +127,7 @@ class EmailReplyProcessor:
     
     def _classify_email(self, body: str, subject: str) -> str:
         """
-        Classify the email as either a bounce or a reply using rule-based detection
-        and Google Gemini as a backup
+        Classify the email as either a bounce or a reply
         
         Args:
             body: Email body text
@@ -140,7 +139,7 @@ class EmailReplyProcessor:
         try:
             print(f"Starting email classification for subject: {subject}")
             
-            # Check for common bounce patterns first (rule-based approach)
+            # Check for common bounce patterns
             bounce_indicators = [
                 "mailer-daemon",
                 "mail delivery failed",
@@ -165,85 +164,10 @@ class EmailReplyProcessor:
                     print(f"Bounce indicator found: {indicator}")
                     return "bounce"
             
-            # If no clear bounce indicators, try using Google Gemini
-            api_key = os.getenv("GOOGLE_API_KEY")
-            if api_key:
-                try:
-                    print("Using Google Gemini for classification")
-                    # Configure the model
-                    generation_config = {
-                        "temperature": 0,
-                        "top_p": 1,
-                        "top_k": 1,
-                        "max_output_tokens": 50,
-                    }
-                    
-                    safety_settings = [
-                        {
-                            "category": "HARM_CATEGORY_HARASSMENT",
-                            "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-                        },
-                        {
-                            "category": "HARM_CATEGORY_HATE_SPEECH",
-                            "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-                        },
-                        {
-                            "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                            "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-                        },
-                        {
-                            "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
-                            "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-                        },
-                    ]
-                    
-                    # List available models to help with debugging
-                    try:
-                        models = genai.list_models()
-                        model_names = [model.name for model in models]
-                        print(f"Available models: {model_names}")
-                    except Exception as e:
-                        print(f"Error listing models: {str(e)}")
-                    
-                    # Use gemini-pro instead of gemini-1.0-pro
-                    model = genai.GenerativeModel(
-                        model_name="gemini-pro",  # Updated model name
-                        generation_config=generation_config,
-                        safety_settings=safety_settings
-                    )
-                    
-                    prompt = f"""
-                    Analyze this email and determine if it's a bounce notification or a human reply.
-                    A bounce notification is an automated message indicating the email couldn't be delivered.
-                    
-                    Subject: {subject}
-                    
-                    Body:
-                    {body[:1000]}
-                    
-                    Output only one word: either "bounce" or "reply"
-                    """
-                    
-                    response = model.generate_content(prompt)
-                    
-                    # Extract the classification from the response
-                    classification_text = response.text.strip().lower()
-                    print(f"Google Gemini classification: {classification_text}")
-                    
-                    # Return bounce only if explicitly classified as such
-                    if "bounce" in classification_text:
-                        return "bounce"
-                    else:
-                        return "reply"
-                        
-                except Exception as e:
-                    print(f"Error using Google Gemini: {str(e)}")
-                    # Fall back to default classification
-                    return "reply"
-            else:
-                print("Google API key not set, skipping LLM classification")
-                return "reply"
-            
+            # If no bounce indicators found, classify as reply
+            print("No bounce indicators found, classifying as reply")
+            return "reply"
+                
         except Exception as e:
             print(f"Error classifying email: {str(e)}")
             # Default to "reply" if classification fails
