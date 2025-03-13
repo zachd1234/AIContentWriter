@@ -357,7 +357,6 @@ class DatabaseService:
         Returns:
             Dictionary containing the result of the operation, including the count of deleted URLs
         """
-        conn = None
         try:
             # Connect to the database
             conn = self.get_connection()
@@ -375,8 +374,9 @@ class DatabaseService:
             # Commit the transaction
             conn.commit()
             
-            # Close the cursor (but not the connection yet)
+            # Close the connection
             cursor.close()
+            conn.close()
             
             return {
                 "success": True,
@@ -386,24 +386,13 @@ class DatabaseService:
             
         except Exception as e:
             # Log the error
-            logger.error(f"Error deleting prospect URLs for site ID {site_id}: {str(e)}")
-            
-            # Try to rollback if possible
-            if conn:
-                try:
-                    conn.rollback()
-                except:
-                    pass
+            print(f"Error deleting prospect URLs for site ID {site_id}: {str(e)}")
             
             return {
                 "success": False,
                 "deleted_count": 0,
                 "message": f"Failed to delete prospect URLs: {str(e)}"
             }
-        finally:
-            # Always release the connection back to the pool
-            if conn:
-                self.release_connection(conn)
 
     def pop_next_urls(self, max_count: int, site_id: int) -> List[Dict[str, Any]]:
         """
