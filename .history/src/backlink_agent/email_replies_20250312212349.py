@@ -197,17 +197,9 @@ class EmailReplyProcessor:
                         },
                     ]
                     
-                    # List available models to help with debugging
-                    try:
-                        models = genai.list_models()
-                        model_names = [model.name for model in models]
-                        print(f"Available models: {model_names}")
-                    except Exception as e:
-                        print(f"Error listing models: {str(e)}")
-                    
-                    # Use gemini-pro instead of gemini-1.0-pro
+                    # Initialize the model
                     model = genai.GenerativeModel(
-                        model_name="gemini-pro",  # Updated model name
+                        model_name="gemini-1.0-pro",
                         generation_config=generation_config,
                         safety_settings=safety_settings
                     )
