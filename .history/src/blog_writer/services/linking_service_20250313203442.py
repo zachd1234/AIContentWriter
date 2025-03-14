@@ -1,7 +1,6 @@
 import os
 import sys
 import random
-import traceback
 
 # Get the absolute path to the project root directory
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
@@ -219,9 +218,8 @@ class LinkingAgent:
                     all_suggestions.extend(valid_suggestions)
                     
                     # Remove the used URLs from remaining_posts for next segments
-                    # Use 'loc' instead of 'url' to match the structure from fetch_posts_from_sitemap
                     remaining_posts = [post for post in remaining_posts 
-                                      if post['loc'] not in used_urls]
+                                      if post['url'] not in used_urls]
                     
                     print(f"Remaining available posts for next segments: {len(remaining_posts)}")
                     
@@ -234,7 +232,6 @@ class LinkingAgent:
             
         except Exception as e:
             print(f"Error in segmented AI analysis: {str(e)}")
-            traceback.print_exc()  # Print the full traceback for better debugging
             return []
 
 
@@ -255,7 +252,7 @@ class LinkingAgent:
             self.available_posts = fetch_posts_from_sitemap(base_url)
             
             # Get link suggestions
-            suggestions = self.suggest_internal_links_segmented(content)
+            suggestions = self.suggest_internal_links(content)
             
             if not suggestions:
                 print("No link suggestions were returned.")

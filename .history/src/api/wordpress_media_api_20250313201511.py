@@ -184,59 +184,13 @@ class WordPressMediaHandler:
         try:
             print(f"Uploading image bytes with filename: {filename}")
             
-            # Convert bytes to PIL Image for Gemini Vision analysis
-            image = PIL.Image.open(io.BytesIO(image_bytes))
+            # Generate metadata for the image
+            metadata = {
+                'alt_text': f"AI generated image: {filename.replace('-', ' ').replace('.jpg', '')}",
+                'title': filename.replace('.jpg', '')
+            }
             
-            # Generate metadata using Gemini Vision
-            prompt = """Analyze this image and provide SEO-optimized metadata for WordPress.
-
-            Return ONLY a JSON object with these fields:
-            - alt_text: Descriptive text for accessibility (under 125 chars)
-            - title: Image title with words separated by dashes (under 60 chars)"""
-            
-            try:
-                response = self.model.generate_content([
-                    prompt,
-                    image  # Pass PIL Image object
-                ])
-                
-                # Clean up response
-                response_text = response.text
-                response_text = response_text.replace("```json", "").replace("```", "").strip()
-                metadata = json.loads(response_text)
-                
-                # Format title
-                title = metadata.get('title', 'Image').lower()
-                title = re.sub(r'[^a-z0-9\s-]', '', title)
-                title = re.sub(r'\s+', '-', title)
-                
-                metadata = {
-                    'alt_text': metadata.get('alt_text', 'Image'),
-                    'title': title
-                }
-                
-            except Exception as e:
-                print(f"Failed to generate metadata: {str(e)}")
-                # Fallback metadata
-                title = filename.replace('.jpg', '').replace('-', ' ')
-                title = re.sub(r'generated_image_\d+_\d+', '', title).strip()
-                if not title:
-                    title = "AI generated image"
-                
-                title = title.lower()
-                title = re.sub(r'[^a-z0-9\s-]', '', title)
-                title = re.sub(r'\s+', '-', title)
-                
-                metadata = {
-                    'alt_text': f"AI generated image: {title.replace('-', ' ')}",
-                    'title': title
-                }
-            
-            print(f"Generated metadata: {metadata}")
-            
-            # Create filename with metadata title
-            filename = f"{metadata['title']}-{int(time.time() * 1000)}.jpg"
-            
+            # Create multipart form data
             multipart_data = MultipartEncoder(
                 fields={
                     'file': (filename, image_bytes, 'image/jpeg'),
