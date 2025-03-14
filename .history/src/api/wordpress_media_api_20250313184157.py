@@ -179,101 +179,28 @@ class WordPressMediaHandler:
             filename (str): The filename to use
             
         Returns:
-            str: URL of the uploaded image
+            str: Media ID of the uploaded image
         """
         try:
-            print(f"Uploading image bytes with filename: {filename}")
-            
-            # Convert bytes to PIL Image for Gemini Vision analysis
-            image = PIL.Image.open(io.BytesIO(image_bytes))
-            
-            # Generate metadata using Gemini Vision
-            prompt = """Analyze this image and provide SEO-optimized metadata for WordPress.
-
-            Return ONLY a JSON object with these fields:
-            - alt_text: Descriptive text for accessibility (under 125 chars)
-            - title: Image title with words separated by dashes (under 60 chars)"""
-            
-            try:
-                response = self.model.generate_content([
-                    prompt,
-                    image  # Pass PIL Image object
-                ])
-                
-                # Clean up response
-                response_text = response.text
-                response_text = response_text.replace("```json", "").replace("```", "").strip()
-                metadata = json.loads(response_text)
-                
-                # Format title
-                title = metadata.get('title', 'Image').lower()
-                title = re.sub(r'[^a-z0-9\s-]', '', title)
-                title = re.sub(r'\s+', '-', title)
-                
-                metadata = {
-                    'alt_text': metadata.get('alt_text', 'Image'),
-                    'title': title
-                }
-                
-            except Exception as e:
-                print(f"Failed to generate metadata: {str(e)}")
-                # Fallback metadata
-                title = filename.replace('.jpg', '').replace('-', ' ')
-                title = re.sub(r'generated_image_\d+_\d+', '', title).strip()
-                if not title:
-                    title = "AI generated image"
-                
-                title = title.lower()
-                title = re.sub(r'[^a-z0-9\s-]', '', title)
-                title = re.sub(r'\s+', '-', title)
-                
-                metadata = {
-                    'alt_text': f"AI generated image: {title.replace('-', ' ')}",
-                    'title': title
-                }
-            
-            print(f"Generated metadata: {metadata}")
-            
-            # Create filename with metadata title
-            filename = f"{metadata['title']}-{int(time.time() * 1000)}.jpg"
-            
-            multipart_data = MultipartEncoder(
-                fields={
-                    'file': (filename, image_bytes, 'image/jpeg'),
-                    'alt_text': metadata['alt_text'],
-                    'title': metadata['title']
-                },
-                boundary='----WebKitFormBoundary' + str(int(time.time() * 1000))
-            )
-            
+            # Prepare the request
+            url = f"{self.base_url}/wp-json/wp/v2/media"
             headers = {
-                **self.set_auth_header(),
-                'Content-Type': multipart_data.content_type,
-                'Connection': 'keep-alive',
-                'Accept': '*/*',
-                'User-Agent': 'Python/requests'
+                'Authorization': f'Basic {self.auth_token}',
+                'Content-Disposition': f'attachment; filename={filename}',
+                'Content-Type': 'image/jpeg',
             }
             
-            upload_url = f"{self.base_url}media"
-            print(f"Uploading to: {upload_url}")
+            # Upload the image
+            response = requests.post(url, headers=headers, data=image_bytes)
             
-            response = requests.post(
-                upload_url,
-                headers=headers,
-                data=multipart_data,
-                verify=True
-            )
-            
-            print(f"Response status: {response.status_code}")
-            if response.status_code != 201:
-                print(f"Error response: {response.text}")
-                response.raise_for_status()
-            
-            media_response = response.json()
-            wp_url = media_response['guid']['rendered']
-            print(f"Upload successful. URL: {wp_url}")
-            
-            return wp_url
+            # Check if the upload was successful
+            if response.status_code in [200, 201]:
+                media_data = response.json()
+                return str(media_data['id'])
+            else:
+                print(f"Failed to upload image. Status code: {response.status_code}")
+                print(f"Response: {response.text}")
+                return ""
             
         except Exception as e:
             print(f"Error uploading image bytes: {str(e)}")

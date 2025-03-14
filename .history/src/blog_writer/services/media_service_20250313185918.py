@@ -499,7 +499,7 @@ class PostWriterV2:
                     
                     if item["mediaType"] == "image":
                         # Generate image using existing method
-                        image_url = self.img_client.generate_google_image(item["description"])
+                        image_url = self.img_client.generate_image(item["description"])
                         if "wp-content/uploads" in image_url:
                             item["mediaUrl"] = image_url
                             processed_items.append(item)

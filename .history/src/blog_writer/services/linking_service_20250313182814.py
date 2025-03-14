@@ -1,7 +1,6 @@
 import os
 import sys
 import random
-import traceback
 
 # Get the absolute path to the project root directory
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
@@ -104,139 +103,6 @@ class LinkingAgent:
         except Exception as e:
             print(f"Error in AI analysis: {str(e)}")
             return []
-        
-
-    
-    def suggest_internal_links_segmented(self, post_content: str) -> list:
-        """
-        Suggests internal links for a given post content by breaking it into segments.
-        Processes each segment separately and ensures no duplicate URLs across segments.
-        
-        Args:
-            post_content (str): The content to analyze
-            
-        Returns:
-            list: Combined list of link suggestions across all segments
-        """
-        try:
-            # Create a copy of available posts that we'll modify as we go
-            remaining_posts = self.available_posts.copy()
-            
-            # Break the content into segments of approximately 500 words
-            words = post_content.split()
-            segment_size = 500
-            segments = []
-            
-            for i in range(0, len(words), segment_size):
-                segment = " ".join(words[i:i+segment_size])
-                segments.append(segment)
-            
-            print(f"Split content into {len(segments)} segments")
-            
-            # Process each segment and collect suggestions
-            all_suggestions = []
-            used_urls = set()
-            
-            for i, segment in enumerate(segments):
-                print(f"\nProcessing segment {i+1}/{len(segments)}")
-                
-                # Shuffle the remaining posts to eliminate position bias
-                shuffled_posts = remaining_posts.copy()
-                random.shuffle(shuffled_posts)
-                
-                # Create the prompt with the shuffled posts and segment content
-                prompt = f"""You are an expert content editor specializing in internal linking. Analyze this content segment and suggest 2-3 high-value internal links from our available posts.
-
-                Available posts for linking:
-                {json.dumps(shuffled_posts, indent=2)}
-
-                Content segment to analyze:
-                {segment}
-
-                Guidelines for good linking:
-                - Use natural, contextual anchor text (no "click here" or "read more")
-                - Ensure links are topically relevant
-                - The anchor_text must exactly match the text in the content.
-                - The anchor text should make sense given the post you are linking to.  
-                - Only suggest links to posts from the available posts list
-                - Suggest exactly 2-3 links for this segment, unless there are no good matches
-
-                Return a list of suggested internal links with their anchor text, target URL, context, and reasoning.
-                """
-                
-                # Define the response schema for structured output
-                response_schema = {
-                    "type": "ARRAY",
-                    "items": {
-                        "type": "OBJECT",
-                        "properties": {
-                            "anchor_text": {"type": "STRING"},
-                            "target_url": {"type": "STRING"},
-                            "context": {"type": "STRING"},
-                            "reasoning": {"type": "STRING"}
-                        },
-                        "required": ["anchor_text", "target_url", "context", "reasoning"]
-                    }
-                }
-                
-                # Get response from model with structured output
-                response = self.model.generate_content(
-                    prompt,
-                    generation_config=GenerationConfig(
-                        temperature=0.0,
-                        response_mime_type="application/json",
-                        response_schema=response_schema
-                    )
-                )
-                
-                try:
-                    # Parse the structured output
-                    segment_suggestions = json.loads(response.text)
-                    
-                    # Display the suggestions for this segment
-                    print(f"\nAI Agent's Link Suggestions for Segment {i+1}:")
-                    valid_suggestions = []
-                    
-                    for suggestion in segment_suggestions:
-                        target_url = suggestion['target_url']
-                        
-                        # Skip if this URL has already been used in a previous segment
-                        if target_url in used_urls:
-                            print(f"Skipping: URL already used in a previous segment - {target_url}")
-                            continue
-                        
-                        # Add to valid suggestions and track the URL
-                        valid_suggestions.append(suggestion)
-                        used_urls.add(target_url)
-                        
-                        print(f"\nSuggested Link:")
-                        print(f"→ Anchor Text: \"{suggestion['anchor_text']}\"")
-                        print(f"→ Target URL: {target_url}")
-                        print(f"→ Context: \"{suggestion['context']}\"")
-                        print(f"→ Reasoning: {suggestion['reasoning']}")
-                    
-                    # Add valid suggestions to our combined list
-                    all_suggestions.extend(valid_suggestions)
-                    
-                    # Remove the used URLs from remaining_posts for next segments
-                    # Use 'loc' instead of 'url' to match the structure from fetch_posts_from_sitemap
-                    remaining_posts = [post for post in remaining_posts 
-                                      if post['loc'] not in used_urls]
-                    
-                    print(f"Remaining available posts for next segments: {len(remaining_posts)}")
-                    
-                except json.JSONDecodeError as e:
-                    print(f"Error parsing JSON response for segment {i+1}: {str(e)}")
-                    print(f"Raw response: {response.text}")
-            
-            print(f"\nTotal suggestions across all segments: {len(all_suggestions)}")
-            return all_suggestions
-            
-        except Exception as e:
-            print(f"Error in segmented AI analysis: {str(e)}")
-            traceback.print_exc()  # Print the full traceback for better debugging
-            return []
-
 
     def process_content_with_links(self, content: str, base_url: str) -> str:
         """
@@ -255,7 +121,7 @@ class LinkingAgent:
             self.available_posts = fetch_posts_from_sitemap(base_url)
             
             # Get link suggestions
-            suggestions = self.suggest_internal_links_segmented(content)
+            suggestions = self.suggest_internal_links(content)
             
             if not suggestions:
                 print("No link suggestions were returned.")
