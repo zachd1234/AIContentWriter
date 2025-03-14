@@ -259,7 +259,6 @@ class PostWriterV2:
         
         # Create a closure that includes the base_url for Google Imagen
         def generate_google_image_with_url(prompt: str) -> str:    
-            print("Generating Google Image") 
             return self.img_client.generate_google_image(prompt)
         
         # Define the image generation tools
@@ -499,7 +498,7 @@ class PostWriterV2:
                     
                     if item["mediaType"] == "image":
                         # Generate image using existing method
-                        image_url = self.img_client.generate_google_image(item["description"])
+                        image_url = self.img_client.generate_image(item["description"])
                         if "wp-content/uploads" in image_url:
                             item["mediaUrl"] = image_url
                             processed_items.append(item)

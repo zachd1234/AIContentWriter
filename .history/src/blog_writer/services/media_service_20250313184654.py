@@ -20,7 +20,6 @@ from src.api.serper_api import fetch_videos
 from src.api.wordpress_media_api import WordPressMediaHandler
 import re
 from pydantic import BaseModel
-from src.api.google_imagen_api import GoogleImagenAPI
 
 class GetImgAIClient:
     def __init__(self, base_url: str):
@@ -39,13 +38,10 @@ class GetImgAIClient:
         
         # Update to use the new vision model
         self.vision_model = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash-thinking-exp-01-21",
+            model="gemini-2.0-flash-thinking-exp-01-21",  # Updated model name
             temperature=0.1,
             google_api_key=self.GOOGLE_API_KEY
         )
-        
-        # Initialize Google Imagen API
-        self.imagen_api = GoogleImagenAPI()
 
     def enhance_prompt(self, basic_prompt: str) -> str:
         """Uses LLM to create a detailed image generation prompt."""
@@ -67,10 +63,16 @@ class GetImgAIClient:
         response = self.llm.invoke(prompt)
         return response.content
 
-    def call_getimg_api(self, detailed_prompt: str) -> str:
-        """Makes API call to GetImg service and returns the image URL."""
+
+    def generate_image(self, prompt: str) -> str:
+        """Generates an AI image and uploads it to WordPress."""
         try:
-            # Prepare request data
+            print("original prompt: ", prompt)
+            # Step 1: Enhance the prompt
+            detailed_prompt = self.enhance_prompt(prompt)
+            print("🔹 Enhanced prompt:", detailed_prompt)
+
+            # Step 2: Generate image from GetImg
             data = {
                 "prompt": detailed_prompt,
                 "width": 1024,
@@ -86,51 +88,27 @@ class GetImgAIClient:
                 "Accept": "application/json"
             }
 
-            # Make API request
             response = requests.post(self.API_URL, json=data, headers=headers)
             if response.status_code == 200:
                 result = response.json()
                 if "url" in result:
-                    getimg_url = result["url"]
+                    getimg_url = result["url"]  # This is the source image URL
                     print("✅ Generated image URL:", getimg_url)
-                    return getimg_url
-                else:
-                    print("❌ No URL in GetImg response")
-                    return ""
-            else:
-                print(f"❌ GetImg API error: {response.status_code}")
-                return ""
+                    
+                    # Step 3: Upload to WordPress
+                    try:
+                        wp_handler = WordPressMediaHandler(
+                            base_url=self.base_url,
+                        )
+                        media_id = wp_handler.upload_image_from_url(getimg_url)  # Use the GetImg URL
+                        print(f"📤 Image uploaded to WordPress. Media ID: {media_id}")
+                        return f"{media_id}"
+                        
+                    except Exception as wp_error:
+                        print(f"❌ WordPress upload failed: {str(wp_error)}")
+                        return getimg_url  # Return the GetImg URL as fallback
 
-        except Exception as e:
-            print(f"❌ Error calling GetImg API: {str(e)}")
-            return ""
-
-    def generate_image(self, prompt: str) -> str:
-        """Generates an AI image and uploads it to WordPress."""
-        try:
-            print("original prompt: ", prompt)
-            # Step 1: Enhance the prompt
-            detailed_prompt = self.enhance_prompt(prompt)
-            print("🔹 Enhanced prompt:", detailed_prompt)
-
-            # Step 2: Generate image from GetImg
-            getimg_url = self.call_getimg_api(detailed_prompt)
-            
-            if not getimg_url:
-                return "❌ Image generation failed"
-                
-            # Step 3: Upload to WordPress
-            try:
-                wp_handler = WordPressMediaHandler(
-                    base_url=self.base_url,
-                )
-                media_id = wp_handler.upload_image_from_url(getimg_url)  # Use the GetImg URL
-                print(f"📤 Image uploaded to WordPress. Media ID: {media_id}")
-                return f"{media_id}"
-                
-            except Exception as wp_error:
-                print(f"❌ WordPress upload failed: {str(wp_error)}")
-                return getimg_url  # Return the GetImg URL as fallback
+            return "❌ Image generation failed"
 
         except Exception as e:
             print(f"❌ Error in image generation process: {str(e)}")
@@ -194,48 +172,6 @@ class GetImgAIClient:
             print(f"❌ Error finding video: {str(e)}")
             return f"Error finding video: {str(e)}"
 
-    def generate_google_image(self, prompt: str) -> str:
-        """Generates an AI image using Google Imagen and uploads it to WordPress."""
-        try:
-            print("Original prompt: ", prompt)
-            # Step 1: Enhance the prompt
-            detailed_prompt = self.enhance_prompt(prompt)
-            print("🔹 Enhanced prompt for Google Imagen:", detailed_prompt)
-
-            # Step 2: Generate image using Google Imagen
-            try:
-                # Generate images
-                image_data = self.imagen_api.generate_image(detailed_prompt)
-                
-                if not image_data or len(image_data) == 0:
-                    print("❌ No images generated by Google Imagen")
-                    return self.generate_image(prompt)  # Fall back to GetImg
-                
-                # Get the first image data (bytes and filename)
-                image_bytes, filename = image_data[0]
-                print(f"✅ Generated image with Google Imagen: {filename} ({len(image_bytes)} bytes)")
-                
-                # Step 3: Upload to WordPress
-                try:
-                    wp_handler = WordPressMediaHandler(
-                        base_url=self.base_url,
-                    )
-                    wp_url = wp_handler.upload_image_bytes(image_bytes, filename)
-                    print(f"📤 Image uploaded to WordPress. URL: {wp_url}")
-                    return wp_url
-                    
-                except Exception as wp_error:
-                    print(f"❌ WordPress upload failed: {str(wp_error)}")
-                    return self.generate_image(prompt)  # Fall back to GetImg
-                
-            except Exception as imagen_error:
-                print(f"❌ Google Imagen generation failed: {str(imagen_error)}")
-                return self.generate_image(prompt)  # Fall back to GetImg
-
-        except Exception as e:
-            print(f"❌ Error in Google image generation process: {str(e)}")
-            return self.generate_image(prompt)  # Fall back to GetImg
-
 class PostWriterV2:
     def __init__(self, base_url=None):
         load_dotenv()
@@ -257,15 +193,14 @@ class PostWriterV2:
         # Initialize GetImgAIClient with base_url
         self.img_client = GetImgAIClient(base_url=base_url) if base_url else GetImgAIClient()
         
-        # Create a closure that includes the base_url for Google Imagen
-        def generate_google_image_with_url(prompt: str) -> str:    
-            print("Generating Google Image") 
-            return self.img_client.generate_google_image(prompt)
+        # Create a closure that includes the base_url
+        def generate_image_with_url(prompt: str) -> str:    
+            return self.img_client.generate_image(prompt)
         
-        # Define the image generation tools
+        # Define the image generation tool with the wrapped function
         generate_image_tool = Tool(
             name="GenerateImage",
-            func=generate_google_image_with_url,  # Use Google Imagen explicitly
+            func=generate_image_with_url,
             description="""Creates AI-generated illustrations to help visualize concepts.
             Describe your vision for the image - what you want to see in the image like you are a director setting up the shot."""
         )
@@ -499,7 +434,7 @@ class PostWriterV2:
                     
                     if item["mediaType"] == "image":
                         # Generate image using existing method
-                        image_url = self.img_client.generate_google_image(item["description"])
+                        image_url = self.img_client.generate_image(item["description"])
                         if "wp-content/uploads" in image_url:
                             item["mediaUrl"] = image_url
                             processed_items.append(item)

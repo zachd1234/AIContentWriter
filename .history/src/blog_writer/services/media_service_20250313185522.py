@@ -257,15 +257,14 @@ class PostWriterV2:
         # Initialize GetImgAIClient with base_url
         self.img_client = GetImgAIClient(base_url=base_url) if base_url else GetImgAIClient()
         
-        # Create a closure that includes the base_url for Google Imagen
-        def generate_google_image_with_url(prompt: str) -> str:    
-            print("Generating Google Image") 
+        # Create a closure that includes the base_url
+        def generate_image_with_url(prompt: str) -> str:    
             return self.img_client.generate_google_image(prompt)
         
-        # Define the image generation tools
+        # Define the image generation tool with the wrapped function
         generate_image_tool = Tool(
             name="GenerateImage",
-            func=generate_google_image_with_url,  # Use Google Imagen explicitly
+            func=generate_image_with_url,
             description="""Creates AI-generated illustrations to help visualize concepts.
             Describe your vision for the image - what you want to see in the image like you are a director setting up the shot."""
         )
@@ -499,7 +498,7 @@ class PostWriterV2:
                     
                     if item["mediaType"] == "image":
                         # Generate image using existing method
-                        image_url = self.img_client.generate_google_image(item["description"])
+                        image_url = self.img_client.generate_image(item["description"])
                         if "wp-content/uploads" in image_url:
                             item["mediaUrl"] = image_url
                             processed_items.append(item)
