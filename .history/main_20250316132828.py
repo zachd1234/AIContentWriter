@@ -28,8 +28,6 @@ class OutreachSetupRequest(BaseModel):
 
 class OutreachCampaignRequest(BaseModel):
     site_id: int
-    post_url: str
-    post_title: str
 
 # Define the model for incoming email data
 class EmailWebhookRequest(BaseModel):
