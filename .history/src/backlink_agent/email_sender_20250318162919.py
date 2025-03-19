@@ -1,9 +1,9 @@
 import os
-from typing import Optional, List, Dict, Any
-from dotenv import load_dotenv
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from typing import Optional, List, Dict, Any
+from dotenv import load_dotenv
 from datetime import datetime
 import uuid
 import hashlib
@@ -19,40 +19,35 @@ class EmailSender:
                  smtp_server: str = None,
                  smtp_port: int = None,
                  username: str = None, 
-                 password: str = None,
-                 sendgrid_api_key: str = None):
+                 password: str = None):
         """
-        Initialize the EmailSender with SMTP server details or SendGrid API key.
+        Initialize the EmailSender with SMTP server details.
         
         Args:
             smtp_server: SMTP server address (e.g., 'smtp.gmail.com')
             smtp_port: SMTP server port (e.g., 587 for TLS)
             username: Email username/address
             password: Email password or app password
-            sendgrid_api_key: SendGrid API key for using SendGrid instead of SMTP
         """
         # Use provided values or fall back to environment variables
         self.smtp_server = smtp_server or os.environ.get("SMTP_SERVER", "smtp.office365.com")
         self.smtp_port = smtp_port or int(os.environ.get("SMTP_PORT", 587))
         self.username = username or os.environ.get("EMAIL_USERNAME")
         self.password = password or os.environ.get("EMAIL_PASSWORD")
-        self.sendgrid_api_key = sendgrid_api_key or os.environ.get("SENDGRID_API_KEY")
-        
-        # Determine if we should use SendGrid
-        self.use_sendgrid = bool(self.sendgrid_api_key)
         
         # Validate that we have the necessary credentials
-        if not self.use_sendgrid and not all([self.smtp_server, self.smtp_port, self.username, self.password]):
+        if not all([self.smtp_server, self.smtp_port, self.username, self.password]):
             print("Warning: Email credentials not fully configured. Email sending may fail.")
 
+
     def send_email(self, 
-                  to_email: str, 
-                  subject: str, 
-                  body: str,
-                  cc: Optional[List[str]] = None,
-                  bcc: Optional[List[str]] = None,
-                  html_body: Optional[str] = None,
-                  site_id: Optional[int] = None) -> Dict[str, Any]:
+              to_email: str, 
+              subject: str, 
+              body: str,
+              cc: Optional[List[str]] = None,
+              bcc: Optional[List[str]] = None,
+              html_body: Optional[str] = None,
+              site_id: Optional[int] = None) -> Dict[str, Any]:
         """
         Send an email with the given details and track it in the database.
         
@@ -67,60 +62,6 @@ class EmailSender:
             
         Returns:
             Dictionary with status and message
-        """
-        # Try to use SendGrid if API key is available
-        if self.use_sendgrid:
-            try:
-                # Add parent directory to path
-                import os
-                import sys
-                parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                if parent_dir not in sys.path:
-                    sys.path.append(parent_dir)
-                    
-                # Direct import from the correct location
-                from api.sendgrid_api import send_email as sendgrid_send_email
-                
-                # Call the SendGrid API send_email function
-                result = sendgrid_send_email(
-                    to_email=to_email,
-                    subject=subject,
-                    html_content=html_body or f"<p>{body}</p>",
-                    plain_content=body,
-                    cc_emails=cc,
-                    bcc_emails=bcc
-                )
-                
-                # If SendGrid was successful, return the result
-                if result["success"]:
-                    return result
-                else:
-                    print(f"SendGrid email failed: {result['message']}. Falling back to SMTP.")
-            except Exception as e:
-                print(f"Error using SendGrid API: {str(e)}. Falling back to SMTP.")
-        
-        # Fall back to SMTP if SendGrid is not available or failed
-        return self._send_email_smtp(
-            to_email=to_email,
-            subject=subject,
-            body=body,
-            cc=cc,
-            bcc=bcc,
-            html_body=html_body,
-            site_id=site_id
-        )
-    
-    def _send_email_smtp(self, 
-                        to_email: str, 
-                        subject: str, 
-                        body: str,
-                        cc: Optional[List[str]] = None,
-                        bcc: Optional[List[str]] = None,
-                        html_body: Optional[str] = None,
-                        site_id: Optional[int] = None) -> Dict[str, Any]:
-        """
-        Send an email using SMTP with the given details and track it in the database.
-        This is a fallback method when SendGrid is not available.
         """
         if not all([self.smtp_server, self.smtp_port, self.username, self.password]):
             return {
@@ -160,18 +101,54 @@ class EmailSender:
             msg.attach(MIMEText(html_body, 'html'))
         
         try:
-            # Track email in database if site_id is provided
-            if site_id is not None:
+            # More explicit condition with debugging
+            is_ruckquest_email = "@ruckquest.com" in to_email.lower()
+            should_track = not is_ruckquest_email
+            print(f"Email: {to_email}, is_ruckquest_email: {is_ruckquest_email}, should_track: {should_track}")
+            
+            db_service = None
+            
+            if should_track:
                 try:
-                    # Import database service
+                    # Use absolute import with proper path handling
+                    import sys
+                    from pathlib import Path
+                    
+                    # Add the parent directory to sys.path if needed
                     src_dir = Path(__file__).resolve().parent.parent
                     if str(src_dir) not in sys.path:
                         sys.path.append(str(src_dir))
                     
-                    from database_service import DatabaseService
-                    db_service = DatabaseService()
+                    print(f"Python path: {sys.path}")
                     
-                    # Add email tracking
+                    # Import with better error handling
+                    try:
+                        from database_service import DatabaseService
+                        print("Successfully imported DatabaseService")
+                    except ImportError as import_error:
+                        print(f"Error importing DatabaseService: {str(import_error)}")
+                        # Try alternative import paths
+                        try:
+                            from src.database_service import DatabaseService
+                            print("Successfully imported DatabaseService from src")
+                        except ImportError:
+                            print("Failed to import DatabaseService from alternative paths")
+                            raise
+                    
+                    # Create database service with connection testing
+                    try:
+                        db_service = DatabaseService()
+                        # Test the connection
+                        if db_service.get_connection():
+                            print("Database connection successful")
+                        else:
+                            print("Failed to get database connection")
+                    except Exception as conn_error:
+                        print(f"Error connecting to database: {str(conn_error)}")
+                        raise
+                    
+                    # Add email tracking with detailed logging
+                    print(f"Adding email to tracking database: {email_id}, {to_email}")
                     db_service.add_email_tracking(
                         email_id=email_id,
                         recipient=to_email,
@@ -179,8 +156,10 @@ class EmailSender:
                         status="pending",
                         site_id=site_id
                     )
+                    print(f"Successfully added email to tracking database")
                 except Exception as db_error:
                     print(f"Error adding email to tracking database: {str(db_error)}")
+                    # Continue with sending the email even if tracking fails
             
             # Create SMTP session
             server = smtplib.SMTP(self.smtp_server, self.smtp_port)
@@ -205,9 +184,11 @@ class EmailSender:
             server.quit()
             
             # Update status to delivered (only for tracked emails)
-            if site_id is not None:
+            if should_track and db_service:
                 try:
+                    print(f"Updating email status to delivered: {email_id}")
                     db_service.update_email_status(email_id, "delivered")
+                    print("Successfully updated email status")
                     db_service.close()
                 except Exception as update_error:
                     print(f"Error updating email status: {str(update_error)}")
@@ -215,14 +196,15 @@ class EmailSender:
             return {
                 "success": True,
                 "message": f"Email sent successfully to {to_email}",
-                "email_id": email_id if site_id is not None else None
+                "email_id": email_id if should_track else None  # Return the email_id for reference
             }
             
         except Exception as e:
             print(f"Error sending email: {str(e)}")
             # Update status to bounced if sending failed (only for tracked emails)
-            if site_id is not None:
+            if should_track and db_service:
                 try:
+                    print(f"Updating email status to bounced: {email_id}")
                     db_service.update_email_status(email_id, "bounced", str(e))
                     db_service.close()
                 except Exception as update_error:
@@ -231,7 +213,7 @@ class EmailSender:
             return {
                 "success": False,
                 "message": f"Failed to send email: {str(e)}",
-                "email_id": email_id if site_id is not None else None
+                "email_id": email_id if should_track else None  # Return the email_id for reference
             }
 
     def send_backlink_outreach_email(self, 
@@ -240,7 +222,7 @@ class EmailSender:
                                    body: str,
                                    site_id: int = None) -> Dict[str, Any]:
         """
-        Send a backlink outreach email with tracking and email validation.
+        Send a backlink outreach email with tracking.
         
         Args:
             to_email: Recipient email address
@@ -251,32 +233,15 @@ class EmailSender:
         Returns:
             Dictionary with status and message
         """
-        # Basic email format validation
-        if not to_email or '@' not in to_email or '.' not in to_email:
+        # Skip sending if no valid email was found
+        if not to_email or '@' not in to_email:
+            print(f"Invalid recipient email address: {to_email}")
             return {
                 "success": False,
-                "message": f"Invalid email format: {to_email}",
+                "message": f"Invalid recipient email address: {to_email}",
                 "email_id": None
             }
         
-        # Try to validate the email with the API, but continue if it fails
-        try:
-            from backlink_agent.email_validator import EmailValidator
-            validator = EmailValidator()
-            
-            # Only skip if the email is explicitly invalid
-            # If API fails or runs out of credits, we'll still send the email
-            if validator.is_valid_email(to_email) is False:
-                return {
-                    "success": False,
-                    "message": f"Email validation failed: {to_email}",
-                    "email_id": None
-                }
-        except Exception as e:
-            # Log the error but continue with sending
-            print(f"Email validation error (continuing anyway): {str(e)}")
-        
-        # If we get here, either the email is valid or validation failed but we're continuing
         # Call the regular send_email method with the site_id
         return self.send_email(
             to_email=to_email,
@@ -304,7 +269,8 @@ class EmailSender:
         Returns:
             Dictionary with status and message
         """
-        # Get statistics from database
+        # Get statistics from database - use proper import path
+        # Add the parent directory to sys.path if needed
         src_dir = Path(__file__).resolve().parent.parent
         if str(src_dir) not in sys.path:
             sys.path.append(str(src_dir))
@@ -332,16 +298,15 @@ class EmailSender:
         total_delivered = stats_data['total_delivered']
         total_replied = stats_data['total_replied']
         total_bounced = stats_data['total_bounced']
+        reply_rate = stats_data['reply_rate']
+        bounce_rate = stats_data['bounce_rate']
         
-        # Calculate rates
-        reply_rate = (total_replied / total_delivered * 100) if total_delivered > 0 else 0
-        bounce_rate = (total_bounced / total_sent * 100) if total_sent > 0 else 0
-        
-        # Create plain text body
+        # Create plain text email body
         body = f"""Email Campaign Statistics Report
 Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
 SUMMARY:
+---------
 Total Emails Sent: {total_sent}
 Total Emails Delivered: {total_delivered}
 Total Replies Received: {total_replied}
@@ -350,9 +315,10 @@ Cumulative Reply Rate: {reply_rate:.2f}%
 Bounce Rate: {bounce_rate:.2f}%
 
 DAILY BREAKDOWN (Last {len(daily_stats)} days):
+-----------------
 """
         
-        # Add daily stats to plain text body
+        # Add daily stats
         for day in daily_stats:
             date_str = day['date']
             sent = day['sent']
@@ -372,10 +338,12 @@ Date: {date_str}
   Bounce Rate: {daily_bounce_rate:.2f}%
 """
         
-        # Add recent emails to plain text body if available
+        # Add recent emails if available
         if recent_emails:
-            body += f"\nRECENT EMAILS (Last {len(recent_emails)}):\n"
-            
+            body += f"""
+RECENT EMAILS (Last {len(recent_emails)}):
+-----------------
+"""
             for email in recent_emails:
                 recipient = email['recipient']
                 subject = email['subject']
@@ -383,28 +351,28 @@ Date: {date_str}
                 sent_at = email['sent_at']
                 
                 body += f"""
-Recipient: {recipient}
-Subject: {subject}
-Status: {status}
-Sent At: {sent_at}
+Email ID: {email['email_id']}
+  Recipient: {recipient}
+  Subject: {subject}
+  Status: {status}
+  Sent At: {sent_at}
 """
-                
                 if email.get('reply_received_at'):
-                    body += f"Replied: {email['reply_received_at']}\n"
-                elif email.get('bounce_reason'):
-                    body += f"Bounce Reason: {email['bounce_reason']}\n"
+                    body += f"  Reply Received At: {email['reply_received_at']}\n"
+                if email.get('bounce_reason'):
+                    body += f"  Bounce Reason: {email['bounce_reason']}\n"
         
-        # Create HTML body
+        # Create HTML version
         html_body = f"""
-        <!DOCTYPE html>
         <html>
         <head>
             <style>
                 body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
                 .container {{ max-width: 800px; margin: 0 auto; padding: 20px; }}
-                h1 {{ color: #2c3e50; }}
-                h2 {{ color: #3498db; margin-top: 30px; }}
-                .summary {{ background-color: #f8f9fa; padding: 15px; border-radius: 5px; }}
+                h1 {{ color: #2c3e50; font-size: 24px; margin-bottom: 20px; }}
+                h2 {{ color: #3498db; font-size: 20px; margin-top: 30px; }}
+                .summary {{ background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin-bottom: 20px; }}
+                .summary p {{ margin: 5px 0; }}
                 table {{ width: 100%; border-collapse: collapse; margin-top: 10px; }}
                 th, td {{ padding: 12px 15px; text-align: left; border-bottom: 1px solid #ddd; }}
                 th {{ background-color: #3498db; color: white; }}
@@ -486,7 +454,7 @@ Sent At: {sent_at}
                         <th>Sent At</th>
                         <th>Reply/Bounce</th>
                     </tr>
-            """
+        """
             
             for email in recent_emails:
                 recipient = email['recipient']
@@ -549,6 +517,75 @@ Sent At: {sent_at}
             html_body=html_body
         )
 
+    def send_basic_sendgrid_email(self, 
+                                 from_email: str,
+                                 to_email: str,
+                                 subject: str,
+                                 html_content: str,
+                                 plain_content: str = None) -> Dict[str, Any]:
+        """
+        Send a basic email using SendGrid's API.
+        
+        Args:
+            from_email: Sender email address
+            to_email: Recipient email address
+            subject: Email subject line
+            html_content: HTML content of the email
+            plain_content: Optional plain text content of the email
+            
+        Returns:
+            Dictionary with status, message, and response details
+        """
+        if not self.sendgrid_api_key:
+            return {
+                "success": False,
+                "message": "SendGrid API key not configured. Set SENDGRID_API_KEY environment variable."
+            }
+            
+        try:
+            # Import SendGrid components
+            from sendgrid import SendGridAPIClient
+            from sendgrid.helpers.mail import Mail, Content
+            
+            # Create message with HTML content
+            message = Mail(
+                from_email=from_email,
+                to_emails=to_email,
+                subject=subject,
+                html_content=html_content)
+                
+            # Add plain text content if provided
+            if plain_content:
+                message.content = [
+                    Content("text/plain", plain_content),
+                    Content("text/html", html_content)
+                ]
+                
+            # Send the email
+            sg = SendGridAPIClient(self.sendgrid_api_key)
+            response = sg.send(message)
+            
+            # Log response details
+            print(f"SendGrid API response status code: {response.status_code}")
+            
+            # Return success response with details
+            return {
+                "success": True,
+                "message": f"Email sent successfully to {to_email} via SendGrid",
+                "status_code": response.status_code,
+                "body": response.body,
+                "headers": dict(response.headers)
+            }
+            
+        except Exception as e:
+            error_message = str(e)
+            print(f"Error sending email via SendGrid: {error_message}")
+            
+            return {
+                "success": False,
+                "message": f"Failed to send email via SendGrid: {error_message}"
+            }
+
 def main():
     """Example usage of the EmailSender."""
     # Create an instance of EmailSender
@@ -558,7 +595,8 @@ def main():
     print("1. Send a test email")
     print("2. Send a test stats report")
     print("3. Test SendGrid configuration")
-    choice = input("Enter your choice (1-3): ")
+    print("4. Send basic SendGrid email")
+    choice = input("Enter your choice (1-4): ")
     
     if choice == "1":
         # Example email
@@ -578,18 +616,25 @@ def main():
     
     elif choice == "3":
         # Test SendGrid configuration
-        if not sender.use_sendgrid:
+        if not sender.sendgrid_api_key:
             print("SendGrid API key not configured. Please set the SENDGRID_API_KEY environment variable.")
             return
             
-        # Test SendGrid email
+        # Test basic SendGrid email
+        from_email = input("Enter sender email: ")
         to_email = input("Enter recipient email: ")
-        subject = "SendGrid Test Email from Backlink Agent"
-        body = "This is a test email sent from the Backlink Agent application using SendGrid."
-        html_body = "<strong>This is a test email sent from the Backlink Agent application using SendGrid.</strong>"
+        subject = "Basic SendGrid Test Email"
+        html_content = "<strong>This is a test email sent using SendGrid's basic API</strong>"
+        plain_content = "This is a test email sent using SendGrid's basic API"
         
-        # Send the email using SendGrid
-        result = sender.send_email(to_email=to_email, subject=subject, body=body, html_body=html_body)
+        # Send the basic SendGrid email
+        result = sender.send_basic_sendgrid_email(
+            from_email=from_email,
+            to_email=to_email,
+            subject=subject,
+            html_content=html_content,
+            plain_content=plain_content
+        )
     
     else:
         print("Invalid choice.")
@@ -598,19 +643,13 @@ def main():
     # Print the result
     if result["success"]:
         print(f"Success: {result['message']}")
-        if "status_code" in result:
-            print(f"SendGrid response code: {result['status_code']}")
     else:
         print(f"Error: {result['message']}")
         print("\nTo use this module, you need to set the following environment variables:")
-        print("For SMTP:")
         print("  - SMTP_SERVER (e.g., smtp.gmail.com)")
         print("  - SMTP_PORT (e.g., 587)")
         print("  - EMAIL_USERNAME (your email address)")
         print("  - EMAIL_PASSWORD (your email password or app password)")
-        print("\nFor SendGrid:")
-        print("  - SENDGRID_API_KEY (your SendGrid API key)")
-        print("  - EMAIL_FROM (sender email address)")
         print("\nFor Gmail, you'll need to use an App Password instead of your regular password.")
         print("Learn more: https://support.google.com/accounts/answer/185833")
 

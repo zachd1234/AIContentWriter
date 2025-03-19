@@ -71,14 +71,7 @@ class EmailSender:
         # Try to use SendGrid if API key is available
         if self.use_sendgrid:
             try:
-                # Add parent directory to path
-                import os
-                import sys
-                parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                if parent_dir not in sys.path:
-                    sys.path.append(parent_dir)
-                    
-                # Direct import from the correct location
+                # Import the SendGrid API module
                 from api.sendgrid_api import send_email as sendgrid_send_email
                 
                 # Call the SendGrid API send_email function
@@ -240,7 +233,7 @@ class EmailSender:
                                    body: str,
                                    site_id: int = None) -> Dict[str, Any]:
         """
-        Send a backlink outreach email with tracking and email validation.
+        Send a backlink outreach email with tracking.
         
         Args:
             to_email: Recipient email address
@@ -251,32 +244,6 @@ class EmailSender:
         Returns:
             Dictionary with status and message
         """
-        # Basic email format validation
-        if not to_email or '@' not in to_email or '.' not in to_email:
-            return {
-                "success": False,
-                "message": f"Invalid email format: {to_email}",
-                "email_id": None
-            }
-        
-        # Try to validate the email with the API, but continue if it fails
-        try:
-            from backlink_agent.email_validator import EmailValidator
-            validator = EmailValidator()
-            
-            # Only skip if the email is explicitly invalid
-            # If API fails or runs out of credits, we'll still send the email
-            if validator.is_valid_email(to_email) is False:
-                return {
-                    "success": False,
-                    "message": f"Email validation failed: {to_email}",
-                    "email_id": None
-                }
-        except Exception as e:
-            # Log the error but continue with sending
-            print(f"Email validation error (continuing anyway): {str(e)}")
-        
-        # If we get here, either the email is valid or validation failed but we're continuing
         # Call the regular send_email method with the site_id
         return self.send_email(
             to_email=to_email,
