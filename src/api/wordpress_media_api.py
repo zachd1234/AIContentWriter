@@ -286,6 +286,7 @@ def main():
     
     test_image_url = "https://example.com/test-image.jpg"  # Replace with a real test image
     
+    print("test starting")
     try:
         media_url = wp_handler.upload_image_from_url(image_url=test_image_url)
         print(f"Successfully uploaded image. WordPress URL: {media_url}")
