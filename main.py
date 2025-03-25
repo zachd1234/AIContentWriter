@@ -102,28 +102,24 @@ async def root():
 
 @app.post("/run-outreach-campaign")
 async def run_outreach_campaign(request: OutreachCampaignRequest, x_api_key: str = Header(...)):
-    if x_api_key != API_KEY:
-        raise HTTPException(status_code=403, detail="Invalid API Key")
-    
     """
     Run an outreach campaign for the specified site ID
     """
-
+    if x_api_key != API_KEY:
+        raise HTTPException(status_code=403, detail="Invalid API Key")
+    
     try:
         control_panel = create_default_control_panel()
-        print("Stats report")
-        stats_result = control_panel.send_daily_stats_report()
-        print(f"Stats report sent: {stats_result['message']}")
     except Exception as e:
-            print(f"Error sending stats report: {str(e)}")
+        print(f"Error creating control panel: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to create control panel: {str(e)}")
 
     try:
-        control_panel = create_default_control_panel()
         result = control_panel.run_advanced_outreach_campaign(request.site_id, request.post_url, request.post_title)
         
         return {
             "status": "success",
-            "data": "Outreach campaign run"
+            "data": result
         }
         
     except Exception as e:

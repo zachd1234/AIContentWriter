@@ -107,7 +107,7 @@ class ApolloClient:
         role_preferences = [
             ["editor", "blog", "content", "writer"],
             ["marketing", "communications", "pr", "public relations"],
-            ["seo", "growth", "digital"],
+            ["seo", "growth", "dial"],
             ["manager", "director", "head", "lead"]
         ]
         
