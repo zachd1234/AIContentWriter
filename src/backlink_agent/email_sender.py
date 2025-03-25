@@ -85,7 +85,11 @@ class EmailSender:
                 if not html_body:
                     # Split the body into paragraphs and format with proper HTML
                     paragraphs = body.split('\n\n')
-                    html_body = ''.join([f"<p>{p.replace('\n', '<br>')}</p>" for p in paragraphs])
+                    html_body = ''
+                    for p in paragraphs:
+                        # Replace newlines with <br> tags
+                        formatted_p = p.replace('\n', '<br>')
+                        html_body += f"<p>{formatted_p}</p>"
                 
                 # Call the SendGrid API send_email function
                 result = sendgrid_send_email(
