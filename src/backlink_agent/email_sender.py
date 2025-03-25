@@ -81,11 +81,17 @@ class EmailSender:
                 # Direct import from the correct location
                 from api.sendgrid_api import send_email as sendgrid_send_email
                 
+                # If no HTML body is provided, create one with proper paragraph formatting
+                if not html_body:
+                    # Split the body into paragraphs and format with proper HTML
+                    paragraphs = body.split('\n\n')
+                    html_body = ''.join([f"<p>{p.replace('\n', '<br>')}</p>" for p in paragraphs])
+                
                 # Call the SendGrid API send_email function
                 result = sendgrid_send_email(
                     to_email=to_email,
                     subject=subject,
-                    html_content=html_body or f"<p>{body}</p>",
+                    html_content=html_body,
                     plain_content=body,
                     cc_emails=cc,
                     bcc_emails=bcc
@@ -558,7 +564,8 @@ def main():
     print("1. Send a test email")
     print("2. Send a test stats report")
     print("3. Test SendGrid configuration")
-    choice = input("Enter your choice (1-3): ")
+    print("4. Test line break handling")
+    choice = input("Enter your choice (1-4): ")
     
     if choice == "1":
         # Example email
@@ -590,6 +597,48 @@ def main():
         
         # Send the email using SendGrid
         result = sender.send_email(to_email=to_email, subject=subject, body=body, html_body=html_body)
+    
+    elif choice == "4":
+        # Test line break handling
+        to_email = input("Enter recipient email: ")
+        
+        # Create a test message with intentional line breaks
+        test_content = """Hey, Golden Endurance Team,
+
+I loved your article about running with illness! Very interesting how you challenge the unvalidated opinions in medical pamphlets with a focus on personal experience and research.
+
+Golden Endurance is all about peak performance, and while you cover many aspects of endurance, building a robust strength foundation is often the missing link.
+
+Rucking is a low-impact yet highly effective way to forge that exact kind of strength-based endurance, something your audience could greatly benefit from incorporating into their training.
+
+I'm Liam Thompson, founder of Ruck Quest, and we'd love to contribute an educational guest post that explores how rucking can enhance overall endurance for your readers.
+
+Would you be open to seeing some topic ideas?
+
+Best,
+Liam Thompson
+
+P.S. Here's a sample of a recent post we wrote about affordable rucking backpacks: https://ruckquest.com/top-5-affordable-rucking-backpacks/"""
+        
+        print("\n--- Original Content with Line Breaks ---")
+        print(test_content)
+        print("\n--- End of Original Content ---\n")
+        
+        # Send the email with our new line break handling
+        print("Sending email with improved line break handling...")
+        result = sender.send_email(
+            to_email=to_email,
+            subject="Line Break Test Email",
+            body=test_content
+        )
+        
+        print(f"Result: {'Success' if result['success'] else 'Failed'}")
+        print(f"Message: {result.get('message', 'No message')}")
+        
+        if result["success"]:
+            print("\nEmail sent successfully! Check your inbox to verify line breaks are preserved.")
+        else:
+            print("\nFailed to send email.")
     
     else:
         print("Invalid choice.")
