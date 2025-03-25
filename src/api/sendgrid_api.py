@@ -108,6 +108,13 @@ def send_email(
         # Initialize SendGrid client
         sg = SendGridAPIClient(api_key)
         
+        # Debug: Print the message JSON to see what's being sent
+        message_dict = message.get()
+        print("Message JSON structure:")
+        print(f"- Subject: {message_dict.get('subject')}")
+        print(f"- From: {message_dict.get('from', {}).get('email')}")
+        print(f"- To: {message_dict.get('personalizations', [{}])[0].get('to', [{}])[0].get('email')}")
+        
         # Send the email
         response = sg.send(message)
         
@@ -123,6 +130,14 @@ def send_email(
     except Exception as e:
         error_message = str(e)
         print(f"Error sending email via SendGrid: {error_message}")
+        
+        # Try to get more detailed error information
+        if hasattr(e, 'body'):
+            try:
+                print(f"Error details: {e.body.decode()}")
+            except:
+                print(f"Error body: {e.body}")
+        
         traceback.print_exc()
         
         return {
@@ -140,8 +155,93 @@ def main():
     print("Choose an option:")
     print("1. Send a basic test email")
     print("2. Send an email with CC and BCC")
-    choice = input("Enter your choice (1 or 2): ")
+    print("3. Test line break handling")
+    choice = input("Enter your choice (1, 2, or 3): ")
     
+    if choice == "3":
+        # Test case specifically for line break issues
+        to_email = "ruckquest@gmail.com"
+        subject = "Line Break Test Email"
+        
+        # Create a test message with intentional line breaks
+        test_content = """Hey, Golden Endurance Team,
+
+I loved your article about running with illness! Very interesting how you challenge the unvalidated opinions in medical pamphlets with a focus on personal experience and research.
+
+Golden Endurance is all about peak performance, and while you cover many aspects of endurance, building a robust strength foundation is often the missing link.
+
+Rucking is a low-impact yet highly effective way to forge that exact kind of strength-based endurance, something your audience could greatly benefit from incorporating into their training.
+
+I'm Liam Thompson, founder of Ruck Quest, and we'd love to contribute an educational guest post that explores how rucking can enhance overall endurance for your readers.
+
+Would you be open to seeing some topic ideas?
+
+Best,
+Liam Thompson
+
+P.S. Here's a sample of a recent post we wrote about affordable rucking backpacks: https://ruckquest.com/top-5-affordable-rucking-backpacks/"""
+        
+        print("\n--- Original Content with Line Breaks ---")
+        print(test_content)
+        print("\n--- End of Original Content ---\n")
+        
+        # Test different approaches
+        print("Testing different approaches to preserve line breaks...")
+        
+        # Approach 1: Plain text only
+        print("\nApproach 1: Plain text only")
+        result1 = send_email(
+            to_email=to_email,
+            subject=subject + " (Plain Text Only)",
+            html_content="",  # Empty HTML content
+            plain_content=test_content
+        )
+        print(f"Result: {'Success' if result1['success'] else 'Failed'}")
+        
+        # Approach 2: HTML with <br> tags
+        html_with_br = test_content.replace('\n', '<br>\n')
+        print("\nApproach 2: HTML with <br> tags")
+        print("HTML content being sent:")
+        print(html_with_br[:100] + "...")  # Print first 100 chars
+        result2 = send_email(
+            to_email=to_email,
+            subject=subject + " (HTML with <br> tags)",
+            html_content=html_with_br,
+            plain_content=test_content
+        )
+        print(f"Result: {'Success' if result2['success'] else 'Failed'}")
+        
+        # Approach 3: HTML with pre-wrap style
+        html_with_style = f"<div style='white-space: pre-wrap; font-family: sans-serif;'>{test_content}</div>"
+        print("\nApproach 3: HTML with pre-wrap style")
+        print("HTML content being sent:")
+        print(html_with_style[:100] + "...")  # Print first 100 chars
+        result3 = send_email(
+            to_email=to_email,
+            subject=subject + " (HTML with pre-wrap style)",
+            html_content=html_with_style,
+            plain_content=test_content
+        )
+        print(f"Result: {'Success' if result3['success'] else 'Failed'}")
+        
+        # Approach 4: HTML with paragraphs
+        paragraphs = test_content.split('\n\n')
+        html_with_paragraphs = ''.join([f"<p>{p.replace('\n', '<br>')}</p>" for p in paragraphs])
+        print("\nApproach 4: HTML with paragraphs")
+        print("HTML content being sent:")
+        print(html_with_paragraphs[:100] + "...")  # Print first 100 chars
+        result4 = send_email(
+            to_email=to_email,
+            subject=subject + " (HTML with paragraphs)",
+            html_content=html_with_paragraphs,
+            plain_content=test_content
+        )
+        print(f"Result: {'Success' if result4['success'] else 'Failed'}")
+        
+        print("\nAll test emails sent. Please check zachderhake@gmail.com to see which approach worked best.")
+        return
+    
+    # Original code for options 1 and 2
     # Get common email details from user input
     to_email = input("Enter recipient email: ")
     subject = input("Enter email subject: ") or "Test Email from SendGrid API"
