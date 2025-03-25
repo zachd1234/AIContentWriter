@@ -2,7 +2,7 @@
 .venv
 .venv/**
 node_modules
-.git
+.
 __pycache__
 *.pyc
 
@@ -11,7 +11,6 @@ __pycache__
 .vercel
 .env
 .env.*
-.gitignore
 .DS_Store
 
 # Everything else can be simpler
