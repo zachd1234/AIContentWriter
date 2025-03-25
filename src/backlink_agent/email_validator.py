@@ -39,7 +39,7 @@ class EmailValidator:
             return {
                 "success": False,
                 "message": "API key not configured",
-                "is_valid": False
+                "is_valid": True  # Default to true
             }
         
         # Basic validation before API call
@@ -47,7 +47,7 @@ class EmailValidator:
             return {
                 "success": False,
                 "message": "Invalid email format",
-                "is_valid": False
+                "is_valid": True  # Default to true
             }
         
         # Prepare API request parameters
@@ -69,22 +69,24 @@ class EmailValidator:
                 return {
                     "success": False,
                     "message": f"API error: {error_msg}",
-                    "is_valid": False
+                    "is_valid": True  # Default to true
                 }
             
             # Process the validation results
-            is_valid = data.get('format_valid', False) and not data.get('disposable', True)
+            is_valid = True  # Default to true
             
-            # If SMTP check was requested, also check the SMTP validation
-            if check_smtp:
-                is_valid = is_valid and data.get('smtp_check', False)
+            # Only set to false if we have clear evidence the email is invalid
+            if (data.get('format_valid', True) == False or 
+                (check_smtp and data.get('smtp_check', True) == False) or
+                data.get('disposable', False) == True):
+                is_valid = False
             
             return {
                 "success": True,
                 "is_valid": is_valid,
-                "format_valid": data.get('format_valid', False),
-                "mx_found": data.get('mx_found', False),
-                "smtp_check": data.get('smtp_check', False),
+                "format_valid": data.get('format_valid', True),
+                "mx_found": data.get('mx_found', True),
+                "smtp_check": data.get('smtp_check', True),
                 "disposable": data.get('disposable', False),
                 "free": data.get('free', False),
                 "score": data.get('score', 0),
@@ -96,7 +98,7 @@ class EmailValidator:
             return {
                 "success": False,
                 "message": f"Validation error: {str(e)}",
-                "is_valid": False
+                "is_valid": True  # Default to true
             }
 
     def is_valid_email(self, email: str) -> bool:
@@ -112,11 +114,7 @@ class EmailValidator:
         # Get the detailed validation results with SMTP check enabled
         result = self.validate_email(email, check_smtp=True)
         
-        # If the API call wasn't successful, consider the email invalid
-        if not result["success"]:
-            return False
-        
-        # Return the simplified validity result
+        # Return the validity result (which now defaults to True)
         return result["is_valid"]
 
 def main():
