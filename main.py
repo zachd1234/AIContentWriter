@@ -72,17 +72,6 @@ async def generate_post(keyword: str, base_url: str, site_id: int, x_api_key: st
         if not result:
             raise HTTPException(status_code=500, detail="Failed to generate content")
         
-        # Create control panel
-        control_panel = create_default_control_panel()
-        
-        # Send daily stats report
-        try:
-            stats_result = control_panel.send_daily_stats_report()
-            print(f"Stats report sent: {stats_result['message']}")
-        except Exception as e:
-            print(f"Error sending stats report: {str(e)}")
-        
-        # Return just the post generation result
         return {
             "status": "success",
             "data": result
@@ -114,8 +103,13 @@ async def run_outreach_campaign(request: OutreachCampaignRequest, x_api_key: str
         print(f"Error creating control panel: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to create control panel: {str(e)}")
 
+    # Start the campaign
     try:
-        result = control_panel.run_advanced_outreach_campaign(request.site_id, request.post_url, request.post_title)
+        result = control_panel.run_advanced_outreach_campaign(
+            request.site_id, 
+            request.post_url, 
+            request.post_title
+        )
         
         return {
             "status": "success",
