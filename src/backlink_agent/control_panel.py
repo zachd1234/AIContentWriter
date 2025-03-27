@@ -360,7 +360,7 @@ class ControlPanel:
             "emails_failed": failed_sends
         }
 
-def create_default_control_panel(max_emails: int = 10) -> ControlPanel:
+def create_default_control_panel(max_emails: int = 30) -> ControlPanel:
     """
     Create a ControlPanel with default components.
     
