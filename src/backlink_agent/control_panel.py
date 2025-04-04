@@ -360,7 +360,7 @@ class ControlPanel:
             "emails_failed": failed_sends
         }
 
-def create_default_control_panel(max_emails: int = 30) -> ControlPanel:
+def create_default_control_panel(max_emails: int = 40) -> ControlPanel:
     """
     Create a ControlPanel with default components.
     
@@ -400,11 +400,13 @@ def main():
     # Create control panel with default components
     control_panel = create_default_control_panel()  
     
-    # Run a test campaign
+    # Define parameters for the advanced outreach campaign
     test_site_id = 1
+    test_post_url = "https://ruckquest.com/ultimate-guide-choosing-best-rucking-backpack/"
+    test_post_title = "The Ultimate Guide to Choosing the Best Rucking Backpack"
     
-    print(f"Running test outreach campaign for site ID: {test_site_id}")
-    result = control_panel.run_advanced_outreach_campaign(test_site_id, "https://ruckquest.com/ultimate-guide-choosing-best-rucking-backpack/", "The Ultimate Guide to Choosing the Best Rucking Backpack")
+    print(f"Running advanced outreach campaign for site ID: {test_site_id}")
+    result = control_panel.run_advanced_outreach_campaign(test_site_id, test_post_url, test_post_title)
     
     print("\nCampaign Results:")
     for key, value in result.items():

@@ -48,7 +48,9 @@ class ContentGenerator:
             llm=self.llm,
             agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
             verbose=True,
-            handle_parsing_errors=True
+            handle_parsing_errors=True,
+            max_iterations=15,
+            max_execution_time=120
         )
 
     def research_topic(self, keyword: str) -> str:
