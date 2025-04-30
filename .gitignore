@@ -50,3 +50,36 @@ temp/
 .history
 .history/
 .history/.env*
+.env
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Backup files
+.git.bak/
+.git.mirror.bfg-report/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
